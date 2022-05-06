@@ -3,6 +3,25 @@ uuid = "45345e53-8084-4f25-9238-8fb48be4e398"
 authors = ["Jean de_Becdelievre <jeanbecdelievre@gmail.com> and contributors"]
 version = "0.1.0"
 
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+DebuggingUtilities = "5a34b05b-6094-51df-87c5-5e0368a91250"
+Evolutionary = "86b6b26d-c046-49b6-aa0b-5f0f74682bd6"
+FiniteDiff = "6a86dc24-6348-571c-b903-95158fe2bd41"
+HouseholderNets = "a74121b2-63c5-474a-bf75-08bda0c3af6e"
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
+SNOW = "105f6ee8-0889-46b1-9d4b-65e03cbc8f13"
+Sobol = "ed01d8cd-4d21-5b2a-85b4-cc3bdc58bad4"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+
 [compat]
 julia = "1"
 
