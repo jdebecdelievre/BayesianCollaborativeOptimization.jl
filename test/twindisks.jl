@@ -1,5 +1,7 @@
 using BayesianCollaborativeOptimization
 using HouseholderNets
+using LinearAlgebra
+using JLD2
 
 variables = (; 
     A = (; x1=Var(lb=0, ub=1), x2=Var(lb=0, ub=1)),
@@ -8,8 +10,9 @@ variables = (;
 
 cA = [0.5, 0.25]
 cB = [0.5, 0.75]
-subA(z) = z - [(z[1]-cA[1]), (z[2]-cA[2])].*max(0, sqrt((z[1]-cA[1])^2 +(z[2]-cA[2])^2)-.5)
-subB(z) = z - [(z[1]-cB[1]), (z[2]-cB[2])].*max(0, sqrt((z[1]-cB[1])^2 +(z[2]-cB[2])^2)-.5)
+subA(z) = z - ([(z[1]-cA[1]), (z[2]-cA[2])] / norm([(z[1]-cA[1]), (z[2]-cA[2])])).*max(0, sqrt((z[1]-cA[1])^2 +(z[2]-cA[2])^2)-.4)
+subB(z) = z - ([(z[1]-cB[1]), (z[2]-cB[2])] / norm([(z[1]-cB[1]), (z[2]-cB[2])])).*max(0, sqrt((z[1]-cB[1])^2 +(z[2]-cB[2])^2)-.4)
+opt = [sqrt(-0.25^2+.4^2)+0.5, 0.5]
 
 subspace = (;
     A = subA,
@@ -17,7 +20,7 @@ subspace = (;
     )
 
 HOME = pwd()
-savedir = "$HOME/tmp"
+savedir = "$HOME/test/twindisks"
 disciplines = keys(variables)
 
 variables_all = mergevar(values(variables)...)
@@ -40,8 +43,13 @@ showpr(data.B.Z,
         data.B.fsb,[0,1])
 
 ##
-ensembleA = load_ensemble("$savedir/training/10/A/ensemble.jld2");
-ensembleB = load_ensemble("$savedir/training/10/B/ensemble.jld2");
+ite = 2
+data = NamedTuple{disciplines}(map(d->load_data("$savedir/$d.jld2"), disciplines))
+ensembleA = load_ensemble("$savedir/training/$ite/A/ensemble.jld2");
+ensembleB = load_ensemble("$savedir/training/$ite/B/ensemble.jld2");
+data = trim_data!(data, ite)
+##
+##
 showpr(data.B.Z,
         ensembleB,
         data.B.fsb,[0,1])
@@ -54,5 +62,15 @@ showfn(data.B.Z,
         ensembleB[2],   
         data.B.fsb,[0,1])
 ##
-file = "tmp/minimize/10/eic.jld2"
-@load file EIc ite minZ
+file = "$savedir/minimize/$ite/eic.jld2"
+@load file EIc minZ best
+eic(z) = -max(0.,(best+z[1])*(ensembleA(z)*ensembleB(z)))#*exp(-(z-data.A.Z[end-1])⋅(z-data.A.Z[end-1]))
+showpr(data.A.Z,
+        eic,
+        data.A.fsb,[0.,1])
+##
+
+##
+savedir = "tmp/"
+ensembles = (; A=ensembleA, B=ensembleB)
+minimize_ei(savedir, ensembles, data, idz, idz_all)

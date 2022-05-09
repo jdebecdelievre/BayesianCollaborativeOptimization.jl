@@ -20,7 +20,7 @@ export unscale_unpack, unpack, getvar!
 include("train_hnet.jl")
 export learn_feasible_set, save_ensemble, load_ensemble
 include("bco.jl")
-export bco, load_data, save_data, trim_data
+export bco, load_data, save_data, trim_data!
 include("minimize_ei.jl")
 export minimize_ei
 end

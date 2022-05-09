@@ -1,9 +1,10 @@
-function learn_feasible_set(data, savedir,  nparticles::Int64=3,  nlayers::Int64=10)
+function learn_feasible_set(data, savedir,  nparticles::Int64=12,  nlayers::Int64=20)
     mkpath(savedir)
     bounds=[0.,1.]
     n = size(data.Z[1],1)
     ensemble = [HouseholderNet(nlayers,n) for _=1:nparticles]
-    optim = SGD(lr=0.01, αlr=.98, N_epochs=30000, logfreq=100, bounds=bounds)
+    sgd = SGD(lr=0.01, αlr=.5, N_epochs=100000, logfreq=1000, bounds=bounds)
+    optim = [resetopt(sgd) for _=1:nparticles]
     trainingcaches = [TrainingCache(net) for net in ensemble]
     p = plot()
 
@@ -51,25 +52,46 @@ function learn_feasible_set(data, savedir,  nparticles::Int64=3,  nlayers::Int64
     end
 
     # Train nparticles nets
-    for np=1:nparticles
+    np = 1
+    nt = 0
+    while np<nparticles+1
         # reset optimizer
-        opt = resetopt(optim)
+        opt = optim[np]
         net = ensemble[np]
         cache = trainingcaches[np]
 
         # initialize
-        initialization!(net, data.Z,data.Zs, Ntrials=100000, rng=opt.rng)
+        initialization!(net, data.Z, data.Zs, Ntrials=100000, rng=opt.rng, bounds=bounds)
 
         # train
         while mse_update(X, Y, cache, opt, verbose=false); end
 
+        # Retrain if needed
+        if opt.state.loss > 1e-4
+            nt += 1
+            if nt < 4
+                # println("Loss at end of training is $(opt.state.loss). Reattempting training $nt/4.")
+                optim[np] = resetopt(optim[np])
+                continue
+            end
+        end
+        nt=0
+
         # save training history
         hist = historydf(opt.hist)
-        plot!(p,hist.loss, yscale=:log10, label="")
+        plot!(p,hist.loss, yscale=:log10, label="$np")
         
         # save training history
         CSV.write("$savedir/traininghistory$np.csv", hist)
+        np+=1
     end
+
+    # # Resample inactive layers to diversify network
+    nresample = 6
+    ensemble = vcat(([HouseholderNets.resampleinactive(X, ensemble[np], [0., 1.], optim[np].rng) for i=1:nresample] for np=1:nparticles)...)
+    
+    df = DataFrame(X=X, Y=Y, fsb=fsb)
+    CSV.write("$savedir/trainingdata.csv", df)
     save_ensemble("$savedir/ensemble.jld2", ensemble)
     savefig(p, "$savedir/trainingcurves.pdf")
     return ensemble
