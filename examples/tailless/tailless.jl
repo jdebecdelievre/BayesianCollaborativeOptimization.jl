@@ -342,15 +342,21 @@ function aero_subspace(z,ipoptions=Dict())
     """
     z is a NamedTuple of global variables
     """
-    # z = map(v->(v.ini-v.lb)./(v.ub-v.lb), global_variables)
-    variables = mergevar(global_variables, aero_local)
+    variables = mergevar((; xcg=global_variables.xcg), aero_local)
     idx = indexbyname(variables)
     idz = indexbyname(global_variables)
     idg = indexbyname(aero_output)
     k = upper(variables) - lower(variables) 
     b = lower(variables)
 
-    function aerocon(g,x)
+    # unscale z
+    kz = upper(global_variables) - lower(global_variables) 
+    bz = lower(global_variables)
+    z .*= kz
+    z.+= bz
+
+    function fun(g, x)
+        g.= 0.
         # unscale
         x .*= k
         x .+= b
@@ -362,7 +368,6 @@ function aero_subspace(z,ipoptions=Dict())
         @. g[idg.Cl] = Cl / 1.45 - 1
         g[idg.Cm_al] = Cm_al
         g[idg.Cm_al_4g] = Cm_al_4g
-        g[idg.Dcalc] = (D-x[idx.D]) * 10 / W
         g[idg.load_4g] = (2 * W - sum(load_4g))/2/W
         g[idg.Cm] = Cm
         g[idg.Cm_4g] = Cm_4g
@@ -370,38 +375,20 @@ function aero_subspace(z,ipoptions=Dict())
         # Compute Loads ROM
         a1 = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
         a3 = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
-        g[idg.a1calc] = (a1 - x[idx.a1])
-        g[idg.a3calc] = (a3 - x[idx.a3])
+        
+        # objective function
+        f = 1/2 * ((D - z[idz.D])^2+(a1 - z[idz.a1])^2+(a3 - z[idz.a3])^2+(x[idx.xcg] - z[idz.xcg])^2)
 
         # rescale
         x .-= b
         x ./= k
-        nothing
-    end
-    
-    function fun(g, df, dg, x)
-        # Constraints
-        aerocon(g,x)
-        FiniteDiff.finite_difference_jacobian!(dg, aerocon, x)#, Val{:central})
-
-        df .= 0.
-        for k=keys(idz)
-            for (ix,iz)=zip(idx[k],idz[k])
-                df[ix] = (x[ix]-z[iz])
-            end
-        end
-        f = (df⋅df)/2
         return f
     end
     Ng = len(aero_output)
     Nx = len(variables)
 
     x0 = ini_scaled(variables)  # starting point
-    for k=keys(idz)
-        for (ix,iz)=zip(idx[k],idz[k]) 
-            x0[ix] = z[iz]
-        end
-    end
+    x0[idx.xcg] = z[idz.xcg]
     g = zeros(Ng)  # starting point
 
     lx = zeros(Nx) # lower bounds on x
@@ -409,24 +396,34 @@ function aero_subspace(z,ipoptions=Dict())
     lg = lower(aero_output)
     ug = upper(aero_output) # upper bounds on g
     
-    ipoptions["tol"] = 1e-5
-    ipoptions["max_iter"] = 300
+    # ipoptions["tol"] = 1e-5
+    ipoptions["max_iter"] = 500
     # ipoptions["linear_solver"] = "ma97"
-    options = SNOW.Options(derivatives=UserDeriv(), solver=IPOPT(ipoptions))
+    options = SNOW.Options(derivatives=CentralFD(), solver=IPOPT(ipoptions))
 
     xopt, fopt, info = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
-    
-    df = copy(xopt)
-    dg = zeros(Ng, Nx)
-    fun(g, df, dg, xopt)
-    
+    fun(g, xopt)
+
+    # Compute z star
     zs = copy(z)
-    for k=keys(idz)
-        zs[idz[k]] = xopt[idx[k]]
-    end
+    xopt .*= k
+    xopt .+= b
+    zs[idz.xcg] = xopt[idx.xcg]
+    zs[idz.D], load_4g = aero(xopt[idx.alpha], xopt[idx.delta_e], xopt[idx.twist], xopt[idx.xcg])
+    zs[idz.a1] = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
+    zs[idz.a3] = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
+    xopt .-= b
+    xopt ./= k
+
+    # rescale z and zs
+    z .-= bz
+    z ./= kz
+    zs .-= bz
+    zs ./= kz
+
     return zs
 end
-##
+
 function struc_subspace(z,ipoptions=Dict())
     # z = map(v->(v.ini-v.lb)./(v.ub-v.lb), global_variables)
     variables = mergevar(global_variables, struc_local)
@@ -529,3 +526,93 @@ function solve_co()
     end
     return xopt
 end
+# ##
+# function aero_subspace(z,ipoptions=Dict())
+#     """
+#     z is a NamedTuple of global variables
+#     """
+#     # z = map(v->(v.ini-v.lb)./(v.ub-v.lb), global_variables)
+#     variables = mergevar(global_variables, aero_local)
+#     idx = indexbyname(variables)
+#     idz = indexbyname(global_variables)
+#     idg = indexbyname(aero_output)
+#     k = upper(variables) - lower(variables) 
+#     b = lower(variables)
+
+#     function aerocon(g,x)
+#         # unscale
+#         x .*= k
+#         x .+= b
+
+#         # Aero
+#         D, load_4g, Cl, Cm, Cm_4g, q, Cm_al, Cm_al_4g = aero(x[idx.alpha], x[idx.delta_e], x[idx.twist], x[idx.xcg])
+
+#         g[idg.qpos] = -q/W
+#         @. g[idg.Cl] = Cl / 1.45 - 1
+#         g[idg.Cm_al] = Cm_al
+#         g[idg.Cm_al_4g] = Cm_al_4g
+#         g[idg.Dcalc] = (D-x[idx.D]) * 10 / W
+#         g[idg.load_4g] = (2 * W - sum(load_4g))/2/W
+#         g[idg.Cm] = Cm
+#         g[idg.Cm_4g] = Cm_4g
+
+#         # Compute Loads ROM
+#         a1 = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
+#         a3 = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
+#         g[idg.a1calc] = (a1 - x[idx.a1])
+#         g[idg.a3calc] = (a3 - x[idx.a3])
+
+#         # rescale
+#         x .-= b
+#         x ./= k
+#         nothing
+#     end
+    
+#     function fun(g, df, dg, x)
+#         # Constraints
+#         aerocon(g,x)
+#         FiniteDiff.finite_difference_jacobian!(dg, aerocon, x)#, Val{:central})
+
+#         df .= 0.
+#         for k=keys(idz)
+#             for (ix,iz)=zip(idx[k],idz[k])
+#                 df[ix] = (x[ix]-z[iz])
+#             end
+#         end
+#         f = (df⋅df)/2
+#         return f
+#     end
+#     Ng = len(aero_output)
+#     Nx = len(variables)
+
+#     x0 = ini_scaled(variables)  # starting point
+#     for k=keys(idz)
+#         for (ix,iz)=zip(idx[k],idz[k]) 
+#             x0[ix] = z[iz]
+#         end
+#     end
+#     g = zeros(Ng)  # starting point
+
+#     lx = zeros(Nx) # lower bounds on x
+#     ux = ones(Nx) # upper bounds on x
+#     lg = lower(aero_output)
+#     ug = upper(aero_output) # upper bounds on g
+    
+#     ipoptions["tol"] = 1e-5
+#     ipoptions["max_iter"] = 300
+#     # ipoptions["linear_solver"] = "ma97"
+#     options = SNOW.Options(derivatives=UserDeriv(), solver=IPOPT(ipoptions))
+
+#     xopt, fopt, info = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
+    
+#     df = copy(xopt)
+#     dg = zeros(Ng, Nx)
+#     fun(g, df, dg, xopt)
+    
+#     zs = copy(z)
+#     for k=keys(idz)
+#         zs[idz[k]] = xopt[idx[k]]
+#     end
+#     return zs
+# end
+##
