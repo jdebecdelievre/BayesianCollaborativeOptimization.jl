@@ -17,7 +17,7 @@ using CSV
 
 include("var.jl")
 export Var, ini, lower, upper, varnames, len, index, indexbyname, indexbygroup, len, mergevar, ini_scaled, get_scaled
-export unscale_unpack, unpack, getvar!
+export unscale_unpack, unpack, getvar!, scale
 include("train_hnet.jl")
 export learn_feasible_set, save_ensemble, load_ensemble
 include("bco.jl")
