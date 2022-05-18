@@ -114,13 +114,21 @@ end
 const AIC_LU, TLmesh = prepare_aero()
 
 # global_variables
-global_variables = (
-    R   = Var(ini=4e3, lb=3000, ub=10000),
-    D   = Var(ini=50., lb=W/300, ub=W/15),
+aero_global = (
+    D   = Var(ini=50., lb=W/30, ub=W/15),
     a1  = Var(ini=3/4, lb=.5,   ub=1),
     a3  = Var(ini=0.,  lb=-.5,  ub=.5),
     xcg = Var(ini=3.,  lb=1,    ub=5),
 )
+struc_global = (
+    R   = Var(ini=4e3, lb=3000, ub=7000),
+    D   = Var(ini=50., lb=W/30, ub=W/15),
+    a1  = Var(ini=3/4, lb=.5,   ub=1),
+    a3  = Var(ini=0.,  lb=-.5,  ub=.5),
+    xcg = Var(ini=3.,  lb=1,    ub=5),
+)
+global_variables = mergevar(struc_global, aero_global)
+@assert keys(global_variables)[1] == :R
 
 # Aero
 aero_local = (
@@ -202,11 +210,11 @@ end
 # Struc
 struc_local = (
     thickness = Var(ini=TLmesh.beam_height/16, lb=1/12/32, ub=TLmesh.beam_height/2),
-    Wt        = Var(ini=50., lb=1, ub=150)
+    Wt        = Var(ini=50., lb=1, ub=100)
 )
 struc_output = (
     sigma = Var(lb=-Inf, ub=0., N=ny),
-    Rcalc = Var(lb=-Inf, ub=0. ),
+    Rcalc = Var(lb=-eps(), ub=0. ),
     Wfuel = Var(lb=-Inf, ub=0. ),
     Wwing = Var(lb=-Inf, ub=0. ),
     xcgcalc = Var(lb=0., ub=0.),
@@ -342,18 +350,16 @@ function aero_subspace(z,ipoptions=Dict())
     """
     z is a NamedTuple of global variables
     """
-    variables = mergevar((; xcg=global_variables.xcg), aero_local)
+    variables = mergevar((; xcg=aero_global.xcg), aero_local)
     idx = indexbyname(variables)
-    idz = indexbyname(global_variables)
+    idz = indexbyname(aero_global)
     idg = indexbyname(aero_output)
     k = upper(variables) - lower(variables) 
     b = lower(variables)
 
     # unscale z
-    kz = upper(global_variables) - lower(global_variables) 
-    bz = lower(global_variables)
-    z .*= kz
-    z.+= bz
+    kz = upper(aero_global) - lower(aero_global) 
+    bz = lower(aero_global)
 
     function fun(g, x)
         g.= 0.
@@ -376,12 +382,15 @@ function aero_subspace(z,ipoptions=Dict())
         a1 = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
         a3 = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
         
-        # objective function
-        f = 1/2 * ((D - z[idz.D])^2+(a1 - z[idz.a1])^2+(a3 - z[idz.a3])^2+(x[idx.xcg] - z[idz.xcg])^2)
-
         # rescale
         x .-= b
         x ./= k
+
+        # objective function
+        D = (D-bz[idz.D]) / kz[idz.D]
+        a1 = (a1-bz[idz.a1]) / kz[idz.a1]
+        a3 = (a3-bz[idz.a3]) / kz[idz.a3]
+        f = 1/2 * ((D - z[idz.D])^2+(a1 - z[idz.a1])^2+(a3 - z[idz.a3])^2+(x[idx.xcg] - z[idz.xcg])^2)
         return f
     end
     Ng = len(aero_output)
@@ -390,36 +399,34 @@ function aero_subspace(z,ipoptions=Dict())
     x0 = ini_scaled(variables)  # starting point
     x0[idx.xcg] = z[idz.xcg]
     g = zeros(Ng)  # starting point
+    
+    ipoptions["tol"] = 1e-6
+    ipoptions["max_iter"] = 500
+    # ipoptions["linear_solver"] = "ma97"
+    options = SNOW.Options(derivatives=CentralFD(), solver=IPOPT(ipoptions))
 
     lx = zeros(Nx) # lower bounds on x
     ux = ones(Nx) # upper bounds on x
     lg = lower(aero_output)
     ug = upper(aero_output) # upper bounds on g
-    
-    # ipoptions["tol"] = 1e-5
-    ipoptions["max_iter"] = 500
-    # ipoptions["linear_solver"] = "ma97"
-    options = SNOW.Options(derivatives=CentralFD(), solver=IPOPT(ipoptions))
-
     xopt, fopt, info = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
-    fun(g, xopt)
-
+    
     # Compute z star
     zs = copy(z)
+    zs[idz.xcg] = xopt[idx.xcg]
     xopt .*= k
     xopt .+= b
-    zs[idz.xcg] = xopt[idx.xcg]
-    zs[idz.D], load_4g = aero(xopt[idx.alpha], xopt[idx.delta_e], xopt[idx.twist], xopt[idx.xcg])
-    zs[idz.a1] = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
-    zs[idz.a3] = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
+    D, load_4g = aero(xopt[idx.alpha], xopt[idx.delta_e], xopt[idx.twist], xopt[idx.xcg])
+    a1 = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
+    a3 = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
+    D = (D-bz[idz.D]) / kz[idz.D]
+    a1 = (a1-bz[idz.a1]) / kz[idz.a1]
+    a3 = (a3-bz[idz.a3]) / kz[idz.a3]
+    zs[idz.D] = D
+    zs[idz.a1] = a1
+    zs[idz.a3] = a3
     xopt .-= b
     xopt ./= k
-
-    # rescale z and zs
-    z .-= bz
-    z ./= kz
-    zs .-= bz
-    zs ./= kz
 
     return zs
 end
@@ -467,16 +474,14 @@ function struc_subspace(z,ipoptions=Dict())
     end
     g = zeros(Ng)  # starting point
 
+    ipoptions["tol"] = 1e-6
+    ipoptions["max_iter"] = 500
+    options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=IPOPT(ipoptions))
     lx = zeros(Nx) # lower bounds on x
     ux = ones(Nx) # upper bounds on x
     lg = lower(struc_output)
     ug = upper(struc_output) # upper bounds on g
-
-    ipoptions["tol"] = 1e-6
-    ipoptions["max_iter"] = 100
-    options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=IPOPT(ipoptions))
-    
-    xopt, fopt, info = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
+    xopt, fopt, info, out = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
     
     zs = copy(z)
     for k=keys(idz)

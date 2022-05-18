@@ -10,6 +10,7 @@ using DataFrames
 using JLD2
 using Sobol
 using Plots
+ENV["GKSwstype"] = "100"
 using Evolutionary
 using HouseholderNets
 using CSV

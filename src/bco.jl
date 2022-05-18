@@ -1,14 +1,13 @@
 """
 Receives 1 folder name, and 2 NamedTuples.
 """
-function bco(savedir, variables, subspace_fun)
+function bco(savedir, variables, subspace_fun; warm_start_sampler = -1, z=zeros())
     @assert keys(variables) == keys(subspace_fun) "$(keys(variables)) =/= $(keys(subspace_fun))"
 
     n_ite = 30 # number of iterations
     ini_samples = 2 # number of initial random samples. 0 to use provided z0
     iteration_restart = 0 # Iteration Number at which to restart.
-    warm_start_sampler = 0
-    tol = 5e-3
+    tol = 1e-3
 
     # create xp directory
     mkpath(savedir)
@@ -21,7 +20,7 @@ function bco(savedir, variables, subspace_fun)
     idz_all = indexbyname(variables_all)
 
     # Create sampler
-    Sz = SobolSeq(Nz-1)
+    Sz = SobolSeq(Nz)
     for _=1:warm_start_sampler
         next!(Sz)
     end
@@ -41,7 +40,7 @@ function bco(savedir, variables, subspace_fun)
         if ini_samples == 0
             Z = [ini_scaled(variables_all)]
         else
-            Z = [[1.; next!(Sz)] for _=1:ini_samples]
+            Z = [next!(Sz) for _=1:ini_samples]
         end
 
         # Evaluate subspaces
