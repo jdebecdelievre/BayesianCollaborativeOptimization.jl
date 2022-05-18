@@ -100,8 +100,13 @@ end
 unpack(x::Vector, idxbname::NamedTuple) = map(i->x[i], idxbname)
 unscale(x::Real, v::Var{1}) = x * (v.ub[1] - v.lb[1]) + v.lb[1]
 unscale(x::SVector{N,<:Real}, v::Var{N}) where N = SA[(x[i] * (v.ub[i] - v.lb[i]) + v.lb[i] for i=1:N)...]
+unscale(x::Vector{<:Real}, v::Var{N}) where N = [x[i] * (v.ub[i] - v.lb[i]) + v.lb[i] for i=1:N]
 unscale(Xv::NamedTuple, V::NamedTuple)  = map(unscale, Xv,V)
 unscale_unpack(x::Vector{<:Real}, idxbname::NamedTuple, V::NamedTuple) = map((i,v)->unscale(x[i],v), idxbname,V)
+
+scale(x::Real, v::Var{1}) = (x - v.lb[1]) / (v.ub[1] - v.lb[1])
+scale(x::SVector{N,<:Real}, v::Var{N}) where N = SA[((x[i] - v.lb[i]) * (v.ub[i] - v.lb[i]) for i=1:N)...]
+scale(x::Vector{<:Real}, v::Var{N}) where N = [(x[i] - v.lb[i])/(v.ub[i] - v.lb[i]) for i=1:N]
 
 function mergevar(V1::NTV, V2::NTV)
 # not very efficient but ok
