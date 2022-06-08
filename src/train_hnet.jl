@@ -1,19 +1,25 @@
 function learn_feasible_set(data, savedir, options)
     (; nparticles,  nlayers, nresample, N_epochs, logfreq, lr, αlr) = options
+    ENV["GKSwstype"] = "100"
     
     mkpath(savedir)
     bounds= @SVector [0.,1.]
     n = size(data.Z[1],1)
-    ensemble = [HouseholderNet(nlayers,n) for _=1:nparticles]
+    
+    if nlayers == 0
+        nlayers = length(data.Z)
+    end
+    
+    ensemble = [HouseholderNet(nlayers,n) for _=1:nparticles*ntrials]
     sgd = SGD(lr=lr, αlr=αlr, N_epochs=N_epochs, logfreq=logfreq, bounds=bounds)
-    optim = [resetopt(sgd) for _=1:nparticles]
+    optim = [resetopt(sgd) for _=1:nparticles*ntrials]
     trainingcaches = [TrainingCache(net) for net in ensemble]
     p = plot()
 
     # Prep data
     ifs = .!data.fsb
-    X = [SVector{n}.(data.Z); SVector{n}.(data.Zs[ifs])]
-    Y = [data.sqJ; 0*data.sqJ[ifs]]
+    X   = [SVector{n}.(data.Z); SVector{n}.(data.Zs[ifs])]
+    Y   = [data.sqJ; 0*data.sqJ[ifs]]
     fsb = [data.fsb; data.fsb[ifs]]
 
     # Infer value of feasible points
@@ -54,9 +60,9 @@ function learn_feasible_set(data, savedir, options)
     end
 
     # Train nparticles nets
-    np = 1
-    nt = 0
-    while np<nparticles+1
+    loss = 10*ones(nparticles*ntrials)
+    nvalid = 0
+    for np=1:nparticles*ntrials
         # reset optimizer
         opt = optim[np]
         net = ensemble[np]
@@ -67,26 +73,25 @@ function learn_feasible_set(data, savedir, options)
 
         # train
         while mse_update(X, Y, cache, opt, verbose=false); end
-
-        # Retrain if needed
-        if opt.state.loss > 1e-4
-            nt += 1
-            if nt < 4
-                # println("Loss at end of training is $(opt.state.loss). Reattempting training $nt/4.")
-                optim[np] = resetopt(optim[np])
-                continue
-            end
-        end
-        nt=0
-
+        
         # save training history
         hist = historydf(opt.hist)
         plot!(p,hist.loss, yscale=:log10, label="$np")
-        
-        # save training history
         CSV.write("$savedir/traininghistory$np.csv", hist)
-        np+=1
+        
+        # Break if needed
+        loss[np] = hist.loss[end]
+        if hist.loss[end]<1e-4
+            nvalid += 1
+        end
+        if nvalid == nparticles
+            break
+        end
     end
+
+    ## Select best
+    @save "$savedir/losses.jld2" loss
+    ensemble[partialsortperm(loss,1:nparticles)]
 
     # # Resample inactive layers to diversify network
     ensemble = [ensemble; vcat(([HouseholderNets.resampleinactive(X, ensemble[np], bounds, optim[np].rng) for i=1:nresample] for np=1:nparticles)...)]
@@ -156,3 +161,8 @@ end
 #     savefig(p, "$folder/trainingcurves.pdf")
 #     return ensemble
 # end
+
+##
+z = [[0.5, 0.5, 0.5, 0.5], [0.25, 0.25, 0.25, 0.75]]
+zs = [[0.5100212295065314, 0.7519492420527043, 0.37795296279294766, 0.7490375189727755],
+    [0.3369562976702473, 0.743378479616581, 0.2972102153681072, 0.733244693459278]]

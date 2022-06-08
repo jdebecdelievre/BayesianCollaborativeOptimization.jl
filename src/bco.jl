@@ -49,7 +49,7 @@ function bco(variables, subspace_fun, options::BCOoptions; objective=z->z[1])
     idz_all = indexbyname(variables_all)
 
     # Create sampler
-    Sz = SobolSeq(Nz-1)
+    Sz = SobolSeq(Nz)
     for _=1:warm_start_sampler
         next!(Sz)
     end
@@ -69,7 +69,7 @@ function bco(variables, subspace_fun, options::BCOoptions; objective=z->z[1])
         if ini_samples == 0
             Z = [ini_scaled(variables_all)]
         else
-            Z = [[1.; next!(Sz)] for _=1:ini_samples]
+            Z = [next!(Sz) for _=1:ini_samples]
         end
 
         # Evaluate subspaces
