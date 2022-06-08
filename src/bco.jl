@@ -1,4 +1,6 @@
-# General
+"""
+Options structure for BCO
+"""
 @with_kw struct BCOoptions
     n_ite::Int64 = 30 # number of iterations
     ini_samples::Int64 = 2 # number of initial random samples. 0 to use provided z0
@@ -9,18 +11,33 @@
 
     # Training
     nparticles::Int64 = 12
+    ntrials::Int64 = 1
     nlayers::Int64 = 20
     lr::Float64 = 0.01
     αlr::Float64 = .5
     N_epochs::Int64 = 100000
     logfreq::Int64 = 1000
     nresample::Int64 = 0
+
+    # Minimization
+    local_search_multiplier::Float64=10.
 end
 
 """
-Receives 1 folder name, and 2 NamedTuples.
+Default objective function to maximize.
 """
-function bco(variables, subspace_fun, options::BCOoptions; objective=z->z[1])
+function default_obj(z,grad=nothing)
+    if typeof(grad) <: AbstractArray
+        grad .= 0.
+        grad[1] = 1.
+    end
+    return z[1]
+end
+
+"""
+Receives 2 NamedTuples, a BCOoptions structure, and optionally an objective function to maximize.
+"""
+function bco(variables, subspace_fun, options::BCOoptions; objective=default_obj)
     @assert keys(variables) == keys(subspace_fun) "$(keys(variables)) =/= $(keys(subspace_fun))"
     (; n_ite, ini_samples, iteration_restart, warm_start_sampler, tol, savedir) = options
 
@@ -99,11 +116,11 @@ function bco(variables, subspace_fun, options::BCOoptions; objective=z->z[1])
         ensemble = map((d,t)->learn_feasible_set(d,t,options), data, trainingdir)
 
         # B/ Minimize EIc
-        file = "$savedir/minimize/$ite"
-        z, eic = maximize_ei(file, ensemble, data, idz, idz_all, objective=objective)
+        file = "$savedir/eic/$ite"
+        z, eic = maximize_ei(file, ensemble, data, idz, idz_all, options, objective=objective)
 
         # Retrain if eic is too small
-        if (eic > -1e-6)
+        if (eic < 1e-6)
             if (retrain["n"]<4)
                 retrain["n"] += 1
                 println("Retraining after unpromising candidate point (EIC = $eic), $(retrain["n"])/4")

@@ -29,7 +29,7 @@ idz_all = indexbyname(variables_all)
 
 ##
 options = BCOoptions(
-        n_ite = 2, # number of iterations
+        n_ite = 10, # number of iterations
         ini_samples= 2, # number of initial random samples. 0 to use provided z0
         savedir=savedir, nparticles=12, nlayers=20, lr=0.01,
         αlr=.5, N_epochs=100000, logfreq=1000, nresample=0
@@ -37,10 +37,12 @@ options = BCOoptions(
 ##
 data = bco(variables, subspace, options);
 ##
-edir     = NamedTuple{disciplines}(map(s->"$savedir/training/1/$s/ensemble.jld2", disciplines))
+ite      = 4
+edir     = NamedTuple{disciplines}(map(s->"$savedir/training/$ite/$s/ensemble.jld2", disciplines))
 ensemble = map(load_ensemble, edir);
 ddir     = NamedTuple{disciplines}(map(s->"$savedir/$s.jld2", disciplines))
 data     = map(load_data,ddir)
+data     = trim_data!(data, ite)
 ##
 showfn(data.A.Z,
         ensemble.A[1],
@@ -53,36 +55,18 @@ showpr(data.A.Z,
 showpr(data.B.Z,
         ensemble.B,
         data.B.fsb,[0,1])
-
-##
-ite = 2
-data = NamedTuple{disciplines}(map(d->load_data("$savedir/$d.jld2"), disciplines))
-ensembleA = load_ensemble("$savedir/training/$ite/A/ensemble.jld2");
-ensembleB = load_ensemble("$savedir/training/$ite/B/ensemble.jld2");
-data = trim_data!(data, ite)
-##
-##
-showpr(data.B.Z,
-        ensembleB,
-        data.B.fsb,[0,1])
-##
-showpr(data.A.Z,
-        ensembleA,
-        data.A.fsb,[0,1])
-##
-showfn(data.B.Z,
-        ensembleB[2],   
-        data.B.fsb,[0,1])
 ##
 file = "$savedir/minimize/$ite/eic.jld2"
-@load file EIc minZ best
-eic(z) = -max(0.,(best+z[1])*(ensembleA(z)*ensembleB(z)))#*exp(-(z-data.A.Z[end-1])⋅(z-data.A.Z[end-1]))
+@load file EIc maxZ best iniZ
+i = argmax(EIc)
+eic(z) = max(0.,z[1]-best)*(ensemble.A(z) * ensemble.B(z)) * exp(-10*(z-iniZ[i])⋅(z-iniZ[i]))
 showpr(data.A.Z,
-        eic,
-        data.A.fsb,[0.,1])
+eic,
+data.A.fsb.*data.B.fsb,[0.,1])
+scatter!([iniZ[i][1]],[iniZ[i][2]])
 ##
-
+data = trim_data!(data, ite-1)
+maximize_ei("$savedir/tmp4/", ensemble, data, idz, idz_all, options)
 ##
-savedir = "tmp/"
-ensembles = (; A=ensembleA, B=ensembleB)
-minimize_ei(savedir, ensembles, data, idz, idz_all)
+file = "$savedir/tmp4/eic.jld2"
+@load file EIc maxZ best iniZ

@@ -54,7 +54,7 @@ function minimize_ei(savedir, ensembles, data, idz, idz_all)
             end
             p = map((z,E,z_) -> HouseholderNets.predict(z,E,z_), Z, ensembles, Z_)
             violation = map((d,z_)-> minimum(norm(d.Z[i] - z_)-d.sqJ[i] for i=eachindex(d.Z))>0,data,Z_)
-            return (-best-z[1])*prod(p)*prod(violation)#*exp(-10*(z-initial_z)⋅(z-initial_z))
+            return (-best-z[1])*prod(p)*prod(violation)*exp(-10*(z-initial_z)⋅(z-initial_z))
         end
         n = length(initial_z)
         lower = zeros(n)

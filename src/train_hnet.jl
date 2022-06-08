@@ -1,5 +1,5 @@
 function learn_feasible_set(data, savedir, options)
-    (; nparticles,  nlayers, nresample, N_epochs, logfreq, lr, αlr) = options
+    (; nparticles,  nlayers, nresample, N_epochs, logfreq, lr, αlr, ntrials) = options
     ENV["GKSwstype"] = "100"
     
     mkpath(savedir)
@@ -94,7 +94,9 @@ function learn_feasible_set(data, savedir, options)
     ensemble[partialsortperm(loss,1:nparticles)]
 
     # # Resample inactive layers to diversify network
-    ensemble = [ensemble; vcat(([HouseholderNets.resampleinactive(X, ensemble[np], bounds, optim[np].rng) for i=1:nresample] for np=1:nparticles)...)]
+    if nresample > 0
+        ensemble = vcat(ensemble,([HouseholderNets.resampleinactive(X, ensemble[np], bounds, optim[np].rng) for i=1:nresample] for np=1:nparticles)...)
+    end
     
     df = DataFrame(X=X, Y=Y, fsb=fsb)
     CSV.write("$savedir/trainingdata.csv", df)
@@ -121,48 +123,3 @@ function load_ensemble(filename)
     # end
     return ensemble
 end
-
-
-# function train_ensemble(X,Xs,fsb, folder; nparticles::Int64=10,  nlayers::Int64=size(X,1))
-#     n = size(X[1],1)
-#     ensemble = [HouseholderNet(nlayers,n) for np=1:nparticles]
-#     optim = SGD(lr=0.01, αlr=.98, N_epochs=2000000, logfreq=10000, bounds=[-1.,1.])
-#     cache = TrainingCache(net)
-#     Wall = [zeros(n,nparticles) for _=1:nlayers]
-#     ball = zeros(nlayers,nparticles)
-#     p = plot()
-#     for np=1:nparticles
-#         # reset optimizer
-#         opt = resetopt(optim)
-#         net = ensemble[np]
-
-#         # initialize
-#         initialization!(net, X,Xs, Ntrials=100000, rng=opt.rng)
-
-#         # train
-#         while sqJ_update(X,sqJ,fsb,cache,opt,verbose=false); end
-
-#         # save training history
-#         hist = historydf(opt.hist)
-#         plot!(p,hist.loss, yscale=:log, label="")
-        
-#         # set weight
-#         for l=1:nlayers
-#             Wall[l][:,np] .= wb[1]
-#         end
-
-#         # set bias
-#         ball[:,np] .= wb[2]
-        
-#         # save training history
-#         CSV.write("$folder/traininghistory$np.csv", hist)
-#     end
-#     jldsave("$folder/ensemble.jl2", ensemble)
-#     savefig(p, "$folder/trainingcurves.pdf")
-#     return ensemble
-# end
-
-##
-z = [[0.5, 0.5, 0.5, 0.5], [0.25, 0.25, 0.25, 0.75]]
-zs = [[0.5100212295065314, 0.7519492420527043, 0.37795296279294766, 0.7490375189727755],
-    [0.3369562976702473, 0.743378479616581, 0.2972102153681072, 0.733244693459278]]
