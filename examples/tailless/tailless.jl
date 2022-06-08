@@ -507,7 +507,7 @@ function solve_co()
 
     Ng = 2
     Nz = len(global_variables)
-    z0 = copy(zopt); #ini_scaled(global_variables)  # starting point
+    z0 = ini_scaled(global_variables)  # starting point
     lz = zeros(Nz) # lower bounds on z
     uz = ones(Nz) # upper bounds on z
     lg = [-Inf, -Inf]

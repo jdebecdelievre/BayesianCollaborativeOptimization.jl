@@ -28,7 +28,19 @@ idz = map(indexbyname, variables)
 idz_all = indexbyname(variables_all)
 
 ##
-data = bco(savedir, variables, subspace);
+options = BCOoptions(
+        n_ite = 2, # number of iterations
+        ini_samples= 2, # number of initial random samples. 0 to use provided z0
+        savedir=savedir, nparticles=12, nlayers=20, lr=0.01,
+        αlr=.5, N_epochs=100000, logfreq=1000, nresample=0
+)
+##
+data = bco(variables, subspace, options);
+##
+edir     = NamedTuple{disciplines}(map(s->"$savedir/training/1/$s/ensemble.jld2", disciplines))
+ensemble = map(load_ensemble, edir);
+ddir     = NamedTuple{disciplines}(map(s->"$savedir/$s.jld2", disciplines))
+data     = map(load_data,ddir)
 ##
 showfn(data.A.Z,
         ensemble.A[1],

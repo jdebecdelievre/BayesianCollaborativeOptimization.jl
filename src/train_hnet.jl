@@ -1,9 +1,11 @@
-function learn_feasible_set(data, savedir,  nparticles::Int64=12,  nlayers::Int64=20)
+function learn_feasible_set(data, savedir, options)
+    (; nparticles,  nlayers, nresample, N_epochs, logfreq, lr, αlr) = options
+    
     mkpath(savedir)
-    bounds=[0.,1.]
+    bounds= @SVector [0.,1.]
     n = size(data.Z[1],1)
     ensemble = [HouseholderNet(nlayers,n) for _=1:nparticles]
-    sgd = SGD(lr=0.01, αlr=.5, N_epochs=100000, logfreq=1000, bounds=bounds)
+    sgd = SGD(lr=lr, αlr=αlr, N_epochs=N_epochs, logfreq=logfreq, bounds=bounds)
     optim = [resetopt(sgd) for _=1:nparticles]
     trainingcaches = [TrainingCache(net) for net in ensemble]
     p = plot()
@@ -87,8 +89,7 @@ function learn_feasible_set(data, savedir,  nparticles::Int64=12,  nlayers::Int6
     end
 
     # # Resample inactive layers to diversify network
-    nresample = 6
-    ensemble = vcat(([HouseholderNets.resampleinactive(X, ensemble[np], [0., 1.], optim[np].rng) for i=1:nresample] for np=1:nparticles)...)
+    ensemble = [ensemble; vcat(([HouseholderNets.resampleinactive(X, ensemble[np], bounds, optim[np].rng) for i=1:nresample] for np=1:nparticles)...)]
     
     df = DataFrame(X=X, Y=Y, fsb=fsb)
     CSV.write("$savedir/trainingdata.csv", df)

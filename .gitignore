@@ -2,7 +2,8 @@
 data
 tmp
 *.out
-# examples/
-!examples/tailless/*.jl
 xp*
-test/twindisks
+**/*.csv
+**/*.pdf
+**/*.jld2
+**/*.txt
