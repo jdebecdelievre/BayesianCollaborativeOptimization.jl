@@ -11,7 +11,7 @@ function learn_feasible_set(data, savedir, options)
     end
     
     ensemble = [HouseholderNet(nlayers,n) for _=1:nparticles*ntrials]
-    sgd = SGD(lr=lr, αlr=αlr, N_epochs=N_epochs, logfreq=logfreq, bounds=bounds)
+    sgd = SGD(lr=lr, αlr=αlr, N_epochs=N_epochs, logfreq=logfreq, bounds=bounds, dropprob=options.dropprob)
     optim = [resetopt(sgd) for _=1:nparticles*ntrials]
     trainingcaches = [TrainingCache(net) for net in ensemble]
     p = plot()

@@ -18,9 +18,10 @@ Options structure for BCO
     N_epochs::Int64 = 100000
     logfreq::Int64 = 1000
     nresample::Int64 = 0
+    dropprob::Float64 = 0.
 
     # Minimization
-    local_search_multiplier::Float64=10.
+    stepsize::Float64=.3
 end
 
 """

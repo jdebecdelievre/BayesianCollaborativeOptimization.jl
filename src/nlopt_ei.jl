@@ -14,28 +14,37 @@ function maximize_ei(savedir, ensembles, data, idz, idz_all, options; objective=
     maxZ = [copy(z) for _=1:m]
     iniZ = [copy(z) for _=1:m]
     best = 0.
-    nid = similar(z)
+    nid = copy(z)
     for i = 1:m
-        gfs = 1
-        nid .*= 0.
-        z .= 0.
+        
         # Set z to average zstar from disciplines
+        nid .= 0.
+        z .= 0.
         for d=disciplines
             for v=keys(idz[d])
-                z[idz_all[v]] += data[d].Zs[end-i+1][idz[d][v]]
+                z[idz_all[v]] += data[d].Zs[i][idz[d][v]]
+                nid[idz_all[v]] += 1.
+            end
+        end
+        @. iniZ[i] = z / nid
+        
+        # Find best point so far
+        gfs = 1
+        nid .= 0.
+        z .= 0.
+        for d=disciplines
+            for v=keys(idz[d])
+                z[idz_all[v]] += data[d].Z[i][idz[d][v]]
                 nid[idz_all[v]] += 1.
             end
             gfs *= data[d].fsb[i]
         end
         z ./= nid
-        
-        # Find best point so far
         obj = objective(z)
         if (gfs == 1) && (obj>best)
             best = obj
         end
-
-        iniZ[i] .= z
+        
     end
 
     # Maximization function
@@ -45,7 +54,7 @@ function maximize_ei(savedir, ensembles, data, idz, idz_all, options; objective=
     dhdx = map(e->[copy(net.W[1]) for net=e], ensembles)
     h    = map(e->zeros(length(e)), ensembles)
 
-    function eic(z, grad, z0)
+    function eic(z, grad, z0, stepsize)
         g = length(grad) > 0
         # improvement
         obj = g ? objective(z, grad) : objective(z)
@@ -68,57 +77,68 @@ function maximize_ei(savedir, ensembles, data, idz, idz_all, options; objective=
         end
 
         # Localize search(objective(z)-best)
-        loc = exp(-options.local_search_multiplier*(z-z0)⋅(z-z0))
+        loc = exp(-(z-z0)⋅(z-z0)/stepsize^2)
         if g
-            @. grad = grad*loc - (ei * options.local_search_multiplier * 2 * loc) * (z-z0)
+            @. grad = grad*loc - (ei * 1/stepsize^2 * 2 * loc) * (z-z0)
         end
         ei *= loc
 
         return ei
     end
 
-    function eic(z,z0)
+    function eic(z,z0,stepsize)
         for (zz, izz) = zip(Z,idz)
             getvar!(zz,z,izz, idz_all)
         end
         p = map((z,E,z_) -> HouseholderNets.predict(z,E,z_), Z, ensembles, dp)
-        return -max(0., objective(z)-best)*prod(p)*exp(-options.local_search_multiplier*(z-z0)⋅(z-z0))
+        return -max(0., objective(z)-best)*prod(p)*exp(-1/stepsize^2*(z-z0)⋅(z-z0))
     end
 
-    @show eic(iniZ[1], iniZ[1])
-    J = FiniteDiff.finite_difference_gradient(z->eic(z,[],iniZ[1]), iniZ[1])
-    @show J
-    @show eic(iniZ[1], J, iniZ[1])
-    @show J
+    # @show eic(iniZ[1], iniZ[1],.1)
+    # J = FiniteDiff.finite_difference_gradient(z->eic(z,[],iniZ[1],.1), iniZ[1])
+    # @show J
+    # @show eic(iniZ[1], J, iniZ[1],.1)
+    # @show J
 
-    function maximize(z0)
+    function maximize(z0, stepsize)
         n = length(z0)
         lower = zeros(n)
         upper =  ones(n)
 
+        # Start with CMA if local gradient is too small
+        eic(z0, z, z0,stepsize) 
+        if norm(z) < 1e-6
+            results = Evolutionary.optimize(z -> eic(z,z0,stepsize), BoxConstraints(lower, upper), z0, CMAES(μ=50,sigma0=1.), Evolutionary.Options(iterations=5000))
+            maxz, maxf, numevals = Evolutionary.minimizer(results), Evolutionary.minimum(results), Evolutionary.iterations(results)
+            z0 .= maxz
+        end
+
+        # Use SLSQP
         opt = Opt(:LD_SLSQP, n)
         opt.lower_bounds = lower
         opt.upper_bounds = upper
-        # opt.xtol_rel = 1e-4
-        opt.min_objective = (z,grad) -> eic(z,grad,z0)
+        opt.xtol_rel = 1e-6
+        opt.maxeval = 1500
+        opt.min_objective = (z,grad) -> eic(z,grad,z0,stepsize)
         (maxf,maxz,ret) = optimize(opt, z0)
         numevals = opt.numevals
-        # results = Evolutionary.optimize(z -> eic(z,z0), BoxConstraints(lower, upper), z0, CMAES(μ=50,sigma0=1.), Evolutionary.Options(iterations=5000))
-        # maxz, maxf, numevals = Evolutionary.minimizer(results), Evolutionary.minimum(results), Evolutionary.iterations(results)
-        @show numevals
-        @show ret
         return -maxf, maxz, numevals
     end
     
     # Maximize EIc
+    stepsize = ones(m) * options.stepsize
     for i = 1:m
-        EIc[i], z, ite[i] = maximize(iniZ[i])
+        EIc[i], z, ite[i] = maximize(iniZ[i],stepsize[i])
+        if EIc[i] < 1e-4
+            stepsize[i] *= 2
+            EIc[i], z, ite[i] = maximize(iniZ[i],stepsize[i])
+        end
         maxZ[i] .= z
     end
 
     # Save EIc found
     path = "$savedir/eic.jld2"
-    save(path, "EIc", EIc, "maxZ", maxZ, "iniZ", iniZ, "ite", ite, "best", best)
+    save(path, "EIc", EIc, "maxZ", maxZ, "iniZ", iniZ, "ite", ite, "best", best, "stepsize", stepsize)
     
     
     max_eic, imax = findmax(EIc)
