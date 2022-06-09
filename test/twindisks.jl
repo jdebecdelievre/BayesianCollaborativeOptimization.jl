@@ -2,6 +2,7 @@ using BayesianCollaborativeOptimization
 using HouseholderNets
 using LinearAlgebra
 using JLD2
+using NLopt
 
 variables = (; 
     A = (; x1=Var(lb=0, ub=1), x2=Var(lb=0, ub=1)),
@@ -43,12 +44,15 @@ end
 ##
 lo = Vector{Float64}[]
 lf = Vector{Float64}[]
+dz = Vector{Float64}[]
 for i=0:10
         savedir = "$HOME/test/twindisks_jun9_5/$i"
         data    = NamedTuple{disciplines}(map(s->load_data("$savedir/$s.jld2"), disciplines))
         push!(lo, abs.(first.(data.A.Z) .- opt[1]))
         push!(lf, data.A.sqJ + data.B.sqJ)
+        push!(dz, norm.(data.A.Z .- [opt]))
 end
+@save "$HOME/test/twindisks_jun9_5/metrics.jld2" lo lf dz
 ##
 function reorder!(ls)
         for l=ls
@@ -67,7 +71,7 @@ reorder!(lo)
 # data     = NamedTuple{disciplines}(map(s->load_data("$savedir/$s.jld2"), disciplines))
 # ensemble = NamedTuple{disciplines}(map(s->load_ensemble("$savedir/training/3/$s/ensemble.jld2"), disciplines));
 
-##
+## 
 ite      = 1
 savedir  = "$HOME/test/twindisks_jun9_5/1"
 edir     = NamedTuple{disciplines}(map(s->"$savedir/training/$ite/$s/ensemble.jld2", disciplines))
@@ -101,3 +105,58 @@ showpr(data.A.Z,
 showpr(data.B.Z,
         ensemble.B,
         data.B.fsb,[0,1])
+
+## Regular CO
+function solve_co(z0, neval=100)
+        k = 150.
+        Z = [copy(z0) for z=1:neval]
+        i = 1
+        function fun(z, grad)
+                Z[i] .= z
+                i += 1
+                zA = subA(z)
+                zB = subB(z)
+                if len(grad) > 0
+                        grad .= [1., 0.] - 2*k*((z-zA) + (z-zB))
+                end
+                return z[1] - ((z-zA)⋅(z-zA) + (z-zB)⋅(z-zB))*k
+        end
+        opt = Opt(:LD_SLSQP, 2)
+        opt.lower_bounds = [0., 0.]
+        opt.upper_bounds = [1., 1.]
+        opt.xtol_rel = 1e-6
+        opt.maxeval = neval
+        opt.max_objective = fun
+        (maxf,maxz,ret) = optimize(opt, z0)
+        return Z
+end
+for i=0:10
+        savedir  = "$HOME/test/twindisks_jun9_5/$i"
+        ddir     = NamedTuple{disciplines}(map(s->"$savedir/$s.jld2", disciplines))
+        data     = map(load_data,ddir)
+        Z = solve_co(data.A.Z[1])
+        sqJA = norm.(subA.(Z) .- Z)
+        sqJB = norm.(subB.(Z) .- Z)
+        lo = [abs(z[1]-opt[1]) for z = Z]
+        lf = sqJA + sqJB
+        lof = lo + lf
+        @save "$savedir/reg_co.jld2" Z sqJA sqJB lo lf lof
+end
+
+lof = map(i->load("$HOME/test/twindisks_jun9_5/$i/reg_co.jld2","lof"),0:10)
+reorder!(lof)
+plot(lof, yaxis=:log10)
+
+##
+Z = map(i->load("$HOME/test/twindisks_jun9_5/$i/reg_co.jld2","Z"),0:10)
+dz_co = [norm.(z.-[opt]) for z=Z]
+reorder!(dz_co)
+reorder!(dz)
+plot(dz, yaxis=:log10)
+plot!(dz_co, yaxis=:log10)
+
+##
+using Statistics
+plot(mean(dz), yaxis=:log10, formatter=:plain)
+plot!(mean(dz_co)[1:12])
+xticks!(1:12)
