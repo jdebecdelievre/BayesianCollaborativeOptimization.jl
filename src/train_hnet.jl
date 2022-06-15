@@ -7,7 +7,7 @@ function learn_feasible_set(data, savedir, options)
     n = size(data.Z[1],1)
     
     if nlayers == 0
-        nlayers = length(data.Z)
+        nlayers = 5*length(data.Z)
     end
     
     ensemble = [HouseholderNet(nlayers,n) for _=1:nparticles*ntrials]
@@ -69,7 +69,8 @@ function learn_feasible_set(data, savedir, options)
         cache = trainingcaches[np]
 
         # initialize
-        initialization!(net, data.Z, data.Zs, Ntrials=100000, rng=opt.rng, bounds=bounds)
+        # initialization!(net, data.Z, data.Zs, Ntrials=100000, rng=opt.rng, bounds=bounds)
+        initialization!(net, rng=opt.rng, bounds=bounds)
 
         # train
         while mse_update(X, Y, cache, opt, verbose=false); end

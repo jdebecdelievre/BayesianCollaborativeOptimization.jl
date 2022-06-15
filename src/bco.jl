@@ -73,6 +73,7 @@ function bco(variables, subspace_fun, options::BCOoptions; objective=default_obj
     end
 
     # Initial samples and ensemble
+    map(d->mkpath("$savedir/eval/$d"), disciplines)
     if iteration_restart < 1
         # Create data storage 
         data = NamedTuple{disciplines}(Tuple((; 
@@ -95,7 +96,7 @@ function bco(variables, subspace_fun, options::BCOoptions; objective=default_obj
             D = data[d]
             for (i,z)=enumerate(Z)
                 getvar!(D.Z[i], z, idz[d], idz_all)
-                D.Zs[i] .= subspace_fun[d](D.Z[i])
+                D.Zs[i] .= subspace_fun[d](D.Z[i], "$savedir/eval/$d/0_$i.txt")
                 D.sqJ[i] = norm(D.Z[i] .- D.Zs[i])
                 D.fsb[i] = (D.sqJ[i]<tol)
             end
@@ -142,11 +143,14 @@ function bco(variables, subspace_fun, options::BCOoptions; objective=default_obj
 
         # C/ Evaluate new sample
         for d=disciplines
-            push!(data[d].Z, copy(data[d].Z[end]))
-            getvar!(data[d].Z[end], z, idz[d], idz_all)
-            push!(data[d].Zs, subspace_fun[d](data[d].Z[end]))
-            push!(data[d].sqJ, norm(data[d].Z[end] .- data[d].Zs[end]))
-            push!(data[d].fsb, data[d].sqJ[end]<tol)
+            D = data[d]
+            i = length(D.Z) + 1
+            push!(D.Z, copy(D.Z[end]))
+            getvar!(D.Z[end], z, idz[d], idz_all)
+            zs = subspace_fun[d](D.Z[i], "$savedir/eval/$d/$ite.txt")
+            push!(D.Zs, zs)
+            push!(D.sqJ, norm(D.Z[end] .- D.Zs[end]))
+            push!(D.fsb, D.sqJ[end]<tol)
             push!(data[d].ite, ite)
 
             save_data("$savedir/$d.jld2",data[d])

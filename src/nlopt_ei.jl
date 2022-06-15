@@ -16,7 +16,6 @@ function maximize_ei(savedir, ensembles, data, idz, idz_all, options; objective=
     best = 0.
     nid = copy(z)
     for i = 1:m
-        
         # Set z to average zstar from disciplines
         nid .= 0.
         z .= 0.
@@ -44,7 +43,6 @@ function maximize_ei(savedir, ensembles, data, idz, idz_all, options; objective=
         if (gfs == 1) && (obj>best)
             best = obj
         end
-        
     end
 
     # Maximization function
@@ -71,7 +69,11 @@ function maximize_ei(savedir, ensembles, data, idz, idz_all, options; objective=
             # Compute vector and gradient
             p = predict_grad!(dp[d],Z[d], ensembles[d], WZ=WZ[d], dhdx=dhdx[d], h=h[d])
             if g
-                @. grad = grad*p + ei * dp[d]
+                # @. grad = grad*p + ei * dp[d]
+                grad .*= p
+                for v=keys(idz[d])
+                    grad[idz_all[v]] = ei * dp[d][idz[d][v]]
+                end
             end 
             ei *= p
         end
@@ -99,6 +101,7 @@ function maximize_ei(savedir, ensembles, data, idz, idz_all, options; objective=
     # @show J
     # @show eic(iniZ[1], J, iniZ[1],.1)
     # @show J
+    # @show best
 
     function maximize(z0, stepsize)
         n = length(z0)
@@ -112,33 +115,40 @@ function maximize_ei(savedir, ensembles, data, idz, idz_all, options; objective=
             maxz, maxf, numevals = Evolutionary.minimizer(results), Evolutionary.minimum(results), Evolutionary.iterations(results)
             z0 .= maxz
         end
+        
+        # Cast to strict bounds before using SLSQP
+        @. z0 = max(z0, eps())
+        @. z0 = min(z0, 1-eps())
 
         # Use SLSQP
         opt = Opt(:LD_SLSQP, n)
         opt.lower_bounds = lower
         opt.upper_bounds = upper
-        opt.xtol_rel = 1e-6
-        opt.maxeval = 1500
+        opt.xtol_rel = 1e-7
+        opt.maxeval = 2500
         opt.min_objective = (z,grad) -> eic(z,grad,z0,stepsize)
         (maxf,maxz,ret) = optimize(opt, z0)
         numevals = opt.numevals
-        return -maxf, maxz, numevals
+        return -maxf, maxz, numevals, ret
     end
     
     # Maximize EIc
     stepsize = ones(m) * options.stepsize
+    msg = Vector{Symbol}(undef,m)
     for i = 1:m
-        EIc[i], z, ite[i] = maximize(iniZ[i],stepsize[i])
+        EIc[i], z, ite[i], msg[i] = maximize(iniZ[i],stepsize[i])
         if EIc[i] < 1e-4
             stepsize[i] *= 2
-            EIc[i], z, ite[i] = maximize(iniZ[i],stepsize[i])
+            EIc[i], z, ite[i], msg[i] = maximize(iniZ[i],stepsize[i])
         end
         maxZ[i] .= z
     end
 
     # Save EIc found
     path = "$savedir/eic.jld2"
-    save(path, "EIc", EIc, "maxZ", maxZ, "iniZ", iniZ, "ite", ite, "best", best, "stepsize", stepsize)
+    save(path, "EIc", EIc, "maxZ", maxZ, "iniZ", 
+                iniZ, "ite", ite, "best", best, "stepsize", stepsize,
+                "msg",msg)
     
     
     max_eic, imax = findmax(EIc)
