@@ -7,7 +7,6 @@ include("tailless.jl")
 using Statistics
 
 disciplines = (:struc,:aero)
-ite = 15
 
 variables = (; 
     struc = struc_global,
@@ -22,7 +21,7 @@ function metrics(svd)
         sqJstruc = Vector{Float64}[]
         obj = Vector{Float64}[]
         obj_sc = Vector{Float64}[]
-        nxp = 14
+        nxp = 20
         for i = 1:nxp
                 @load "$svd/xp$i/aero.jld2" Z Zs sqJ
                 push!(sqJaero, sqJ)
@@ -48,11 +47,16 @@ end
 met = [1.813618, 1.326392, 0.467193, 0.332232, 0.251307, 0.203285, 0.179433, 0.143485, 0.113937, 0.097779, 0.085133, 0.071687, 0.061396, 0.055545, 0.054146, 0.052986, 0.049264, 0.047197, 0.040634, 0.038498, 0.035806, 0.030987, 0.028716, 0.024090, 0.022092, 0.020837, 0.020427, 0.019728, 0.017669, 0.016691,]/2
 μ, metric, obj, obj_sc, sqJaero, sqJstruc = metrics(svd);
 p = plot(μ,yscale=:log10,label="us")
-plot!(met,label="gpsort")
-
+plot!(met,label="gsort")
+##
+i = 2
+plot(metric[i], yaxis=:log10, label="met")
+plot!(obj[i], yaxis=:log10, label="obj")
+plot!(sqJaero[i], yaxis=:log10, label="aero")
+plot!(sqJstruc[i], yaxis=:log10, label="struc")
 ## Ref result
-savedir = "examples/tailless/xp2"
-ite = 5
+savedir = "examples/tailless/xp6"
+ite = 10
 datadir = NamedTuple{disciplines}(map(d->"$savedir/$d.jld2",disciplines))
 data = map(load_data, datadir)
 data = trim_data!(data, ite)
@@ -60,7 +64,7 @@ data = trim_data!(data, ite)
 netdir = NamedTuple{disciplines}(map(d->"$savedir/training/$ite/$d/ensemble.jld2",disciplines))
 ensemble = map(load_ensemble, netdir);
 @load "$savedir/training/$ite/aero/losses.jld2" loss
-@load "$savedir/eic/$ite/eic.jld2" EIc maxZ iniZ msg ite
+@load "$savedir/eic/$ite/eic.jld2" EIc maxZ iniZ msg ite best
 ##
 options = BCOoptions(
     n_ite = 10, # number of iterations
