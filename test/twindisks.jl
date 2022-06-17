@@ -15,8 +15,8 @@ variables = (;
 
 cA = [0.5, 0.25]
 cB = [0.5, 0.75]
-subA(z) = z - ([(z[1]-cA[1]), (z[2]-cA[2])] / norm([(z[1]-cA[1]), (z[2]-cA[2])])).*max(0, sqrt((z[1]-cA[1])^2 +(z[2]-cA[2])^2)-.4)
-subB(z) = z - ([(z[1]-cB[1]), (z[2]-cB[2])] / norm([(z[1]-cB[1]), (z[2]-cB[2])])).*max(0, sqrt((z[1]-cB[1])^2 +(z[2]-cB[2])^2)-.4)
+subA(z,s) = z - ([(z[1]-cA[1]), (z[2]-cA[2])] / norm([(z[1]-cA[1]), (z[2]-cA[2])])).*max(0, sqrt((z[1]-cA[1])^2 +(z[2]-cA[2])^2)-.4)
+subB(z,s) = z - ([(z[1]-cB[1]), (z[2]-cB[2])] / norm([(z[1]-cB[1]), (z[2]-cB[2])])).*max(0, sqrt((z[1]-cB[1])^2 +(z[2]-cB[2])^2)-.4)
 opt = [sqrt(-0.25^2+.4^2)+0.5, 0.5]
 
 subspace = (;
@@ -33,7 +33,7 @@ idz_all = indexbyname(variables_all)
 
 ##
 for i=0:10
-    savedir = "$HOME/test/twindisks_jun17_1/$i"
+    savedir = "$HOME/test/twindisks_jun17_2/$i"
     options = BCOoptions(
         n_ite = 10, # number of iterations
         ini_samples= 2, # number of initial random samples. 0 to use provided z0
@@ -45,9 +45,10 @@ for i=0:10
 end
 
 ##
-metric = [get_metrics( "$HOME/test/twindisks_jun17_1/$i", disciplines, opt, default_obj)[1] for i=0:10]
+metric = [get_metrics( "$HOME/test/twindisks_jun17_2/$i", disciplines, opt, default_obj)[1] for i=0:2]
 lm = minimum(length(m) for m=metric)
 μ = [mean(m[i] for m=metric) for i=1:lm]
+
 ##
 lo = Vector{Float64}[]
 lf = Vector{Float64}[]
@@ -60,23 +61,7 @@ for i=0:10
     push!(dz, norm.(data.A.Z .- [opt]))
 end
 @save "$HOME/test/twindisks_jun9_5/metrics.jld2" lo lf dz
-##
-function reorder!(ls)
-    for l=ls
-        for i=2:length(l)
-            l[i] = min(l[i-1],l[i])
-        end
-    end
-    return ls
-end
-lof = lo + lf
-reorder!(lof)
-reorder!(lf)
-reorder!(lo)
-##
-# ite
-# data     = NamedTuple{disciplines}(map(s->load_data("$savedir/$s.jld2"), disciplines))
-# ensemble = NamedTuple{disciplines}(map(s->load_ensemble("$savedir/training/3/$s/ensemble.jld2"), disciplines));
+
 ## 
 ite      = 1
 savedir  = "$HOME/test/twindisks_jun9_5/1"

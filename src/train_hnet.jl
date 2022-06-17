@@ -42,7 +42,7 @@ function learn_feasible_set(data, savedir, options)
         
         # save training history
         hist = historydf(opt.hist)
-        plot!(p,hist.loss, yscale=:log10, label="$np")
+        plot!(p,hist.loss .+ eps(), yscale=:log10, label="$np")
         CSV.write("$savedir/traininghistory$np.csv", hist)
         
         # Break if needed
