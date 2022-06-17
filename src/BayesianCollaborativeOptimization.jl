@@ -16,13 +16,15 @@ using HouseholderNets
 using CSV
 using Parameters
 
+include("utils.jl")
+export get_metrics
 include("var.jl")
 export Var, ini, lower, upper, varnames, len, index, indexbyname, indexbygroup, len, mergevar, ini_scaled, get_scaled
 export unscale_unpack, unpack, getvar!, scale
 include("train_hnet.jl")
 export learn_feasible_set, save_ensemble, load_ensemble
 include("bco.jl")
-export bco, load_data, save_data, trim_data!, BCOoptions
+export bco, load_data, save_data, trim_data!, BCOoptions, default_obj
 include("minimize_ei.jl")
 export minimize_ei
 include("nlopt_ei.jl")

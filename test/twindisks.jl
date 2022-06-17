@@ -25,7 +25,6 @@ subspace = (;
     )
 
 HOME = pwd()
-savedir = "$HOME/test/twindisks"
 disciplines = keys(variables)
 
 variables_all = mergevar(values(variables)...)
@@ -34,7 +33,7 @@ idz_all = indexbyname(variables_all)
 
 ##
 for i=0:10
-    savedir = "$HOME/test/twindisks_jun9_5/$i"
+    savedir = "$HOME/test/twindisks_jun17_1/$i"
     options = BCOoptions(
         n_ite = 10, # number of iterations
         ini_samples= 2, # number of initial random samples. 0 to use provided z0
@@ -45,6 +44,10 @@ for i=0:10
     data = bco(variables, subspace, options)
 end
 
+##
+metric = [get_metrics( "$HOME/test/twindisks_jun17_1/$i", disciplines, opt, default_obj)[1] for i=0:10]
+lm = minimum(length(m) for m=metric)
+μ = [mean(m[i] for m=metric) for i=1:lm]
 ##
 lo = Vector{Float64}[]
 lf = Vector{Float64}[]

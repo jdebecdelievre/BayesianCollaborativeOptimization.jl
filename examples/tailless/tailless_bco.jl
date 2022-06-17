@@ -1,7 +1,7 @@
 using Distributed
 using Pkg
 Pkg.activate("/home/adgboost/.julia/dev/BayesianCollaborativeOptimization/")
-addprocs(7, exeflags="--project=$(Base.active_project())")
+addprocs(1, exeflags="--project=$(Base.active_project())")
 
 @everywhere begin
     using HouseholderNets
