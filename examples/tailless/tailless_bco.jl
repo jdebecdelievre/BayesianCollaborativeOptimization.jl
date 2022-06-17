@@ -29,9 +29,9 @@ addprocs(7, exeflags="--project=$(Base.active_project())")
     idz_all = indexbyname(variables_all)
 
     function run(i)
-        savedir = "$HOME/examples/tailless/xp$i"
+        savedir = "$HOME/examples/tailless/rxp$i"
         options = BCOoptions(
-            n_ite = 15, # number of iterations
+            n_ite = 5, # number of iterations
             ini_samples= 2, # number of initial random samples. 0 to use provided z0
             savedir=savedir, ntrials=2, nparticles=8, nlayers=0, lr=0.01,
             warm_start_sampler=i-1, stepsize=.1, tol=1e-4,

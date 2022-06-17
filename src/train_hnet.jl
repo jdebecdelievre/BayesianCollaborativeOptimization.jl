@@ -13,7 +13,7 @@ function learn_feasible_set(data, savedir, options)
     ensemble = [HouseholderNet(nlayers,n) for _=1:nparticles*ntrials]
     sgd = SGD(lr=lr, αlr=αlr, N_epochs=N_epochs, logfreq=logfreq, bounds=bounds, dropprob=options.dropprob)
     optim = [resetopt(sgd) for _=1:nparticles*ntrials]
-    trainingcaches = [TrainingCache(net) for net in ensemble]
+    trainingcaches = [TrainingCacheGrad(net) for net in ensemble]
     p = plot()
 
     # Prep data
@@ -21,7 +21,10 @@ function learn_feasible_set(data, savedir, options)
     X   = [SVector{n}.(data.Z); SVector{n}.(data.Zs[ifs])]
     Y   = [data.sqJ; 0*data.sqJ[ifs]]
     fsb = [data.fsb; data.fsb[ifs]]
-
+    ∇Y  = (data.Z-data.Zs)
+    normalize!.(∇Y)
+    ∇Y  = SVector{n}.(∇Y)
+    
     # Train nparticles nets
     loss = 10*ones(nparticles*ntrials)
     nvalid = 0
@@ -35,7 +38,7 @@ function learn_feasible_set(data, savedir, options)
         initialization!(net, rng=opt.rng, bounds=bounds)
 
         # train
-        while sqJ_update(X, Y, fsb, cache, opt, verbose=false); end
+        while sqJ_grad_update(X, Y, ∇Y, fsb, cache, opt, verbose=false); end
         
         # save training history
         hist = historydf(opt.hist)
