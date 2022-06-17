@@ -7,7 +7,7 @@ function learn_feasible_set(data, savedir, options)
     n = size(data.Z[1],1)
     
     if nlayers == 0
-        nlayers = length(data.Z)
+        nlayers = 5*length(data.Z)
     end
     
     ensemble = [HouseholderNet(nlayers,n) for _=1:nparticles*ntrials]
@@ -22,43 +22,6 @@ function learn_feasible_set(data, savedir, options)
     Y   = [data.sqJ; 0*data.sqJ[ifs]]
     fsb = [data.fsb; data.fsb[ifs]]
 
-    # Infer value of feasible points
-    for i=eachindex(Y)
-        idX = idXs = 1
-        dX = dXs = Inf
-        if fsb[i]
-            # Find closest pair of infeasible points
-            for j=eachindex(data.Z)
-                if !data.fsb[j]
-                    dX̄ = norm(data.Z[j] -X[i])
-                    if (dX̄<dX)
-                        idX = j
-                        dX = dX̄
-                    end
-                    dX̄s = norm(data.Zs[j] -X[i])
-                    if dX̄s<dXs
-                        idXs = j; 
-                        dXs = dX̄s
-                    end
-                end
-            end
-            # Assign to distance to infeasible point, or distance to projection along gradient of function
-            if isfinite(dX)
-                if dX<dXs
-                    Y[i] = data.sqJ[idX]-dX
-                else
-                    Y[i] = ((data.Z[idXs]-data.Zs[idXs])⋅(X[i]-data.Zs[idXs])) / data.sqJ[idXs]
-                end
-            else # no feasible points
-                Y[i] = -10. # will be corrected by negative boundary check below
-            end
-
-            # Make sure boundary is not pulled into being feasible
-            mindist_boundary = minimum(min(abs(x-bounds[1]),abs(x-bounds[2])) for x=X[i])
-            Y[i] = max(Y[i], -mindist_boundary)
-        end
-    end
-
     # Train nparticles nets
     loss = 10*ones(nparticles*ntrials)
     nvalid = 0
@@ -69,10 +32,10 @@ function learn_feasible_set(data, savedir, options)
         cache = trainingcaches[np]
 
         # initialize
-        initialization!(net, data.Z, data.Zs, Ntrials=100000, rng=opt.rng, bounds=bounds)
+        initialization!(net, rng=opt.rng, bounds=bounds)
 
         # train
-        while mse_update(X, Y, cache, opt, verbose=false); end
+        while sqJ_update(X, Y, fsb, cache, opt, verbose=false); end
         
         # save training history
         hist = historydf(opt.hist)
@@ -91,7 +54,7 @@ function learn_feasible_set(data, savedir, options)
 
     ## Select best
     @save "$savedir/losses.jld2" loss
-    ensemble[partialsortperm(loss,1:nparticles)]
+    ensemble = ensemble[partialsortperm(loss,1:nparticles)]
 
     # # Resample inactive layers to diversify network
     if nresample > 0

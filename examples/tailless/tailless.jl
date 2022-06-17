@@ -1,5 +1,6 @@
 using LinearAlgebra
 using BayesianCollaborativeOptimization
+using Snopt
 using SNOW
 using FiniteDiff
 
@@ -142,11 +143,11 @@ aero_output = (
     Cm_al    = Var(lb=-Inf, ub=0.),
     Cm_al_4g = Var(lb=-Inf, ub=0.),
     load_4g  = Var(lb=-Inf, ub=0.),
-    Dcalc    = Var(lb=0., ub=0.),
+    D        = Var(lb=0., ub=1.),
     Cm       = Var(lb=0., ub=0.),
     Cm_4g    = Var(lb=0., ub=0.),
-    a1calc   = Var(lb=0., ub=0.),
-    a3calc   = Var(lb=0., ub=0.),
+    a1       = Var(lb=0., ub=1.),
+    a3       = Var(lb=0., ub=1.),
 )
 
 function aero(alpha, delta_e, twist, xcg)
@@ -179,7 +180,7 @@ function aero(alpha, delta_e, twist, xcg)
     load_4g = 2 .* Sig_4g .* ( 2 * q ) .* pnl # force in lb
 
     # Trefftz plane induced drag in cruise + provided parasitic drag
-    Gamma = zeros(length(Sig)+1)
+    Gamma = zeros(eltype(Sig), length(Sig)+1)
     Gamma[2:end-1] .= diff(Sig)
     Gamma[end] = -Sig[end]
     
@@ -283,15 +284,15 @@ function aao(g, x)
     @. g[idg.Cl] = Cl / 1.45 - 1
     g[idg.Cm_al] = Cm_al
     g[idg.Cm_al_4g] = Cm_al_4g
-    g[idg.Dcalc] = (D-x[idx.D]) * 10 / W
+    g[idg.D] = (D-variables.D.lb) / (variables.D.ub-variables.D.lb)
     g[idg.load_4g] = (2 * W - sum(load_4g))/2/W
     g[idg.Cm] = Cm
     g[idg.Cm_4g] = Cm_4g
 
     a1 = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
     a3 = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
-    g[idg.a1calc] = (a1 - x[idx.a1])
-    g[idg.a3calc] = (a3 - x[idx.a3])
+    g[idg.a1] = (a1 - variables.a1.lb) / (variables.a1.ub-variables.a1.lb)
+    g[idg.a3] = (a3 - variables.a3.lb) / (variables.a3.ub-variables.a3.lb)
 
     # Struct
     load = 4 * W / half_span * (a1.*sin.(TLmesh.theta_c) + a3.*sin.(3*TLmesh.theta_c))
@@ -346,7 +347,7 @@ Zopt = NamedTuple(Pair(k,(TL_optimum[k].-global_variables[k].lb)./(global_variab
 zopt = vcat(Zopt...)
 
 ##
-function aero_subspace(z,ipoptions=Dict())
+function aero_subspace(z,filename, ipoptions=Dict())
     """
     z is a NamedTuple of global variables
     """
@@ -387,10 +388,11 @@ function aero_subspace(z,ipoptions=Dict())
         x ./= k
 
         # objective function
-        D = (D-bz[idz.D]) / kz[idz.D]
-        a1 = (a1-bz[idz.a1]) / kz[idz.a1]
-        a3 = (a3-bz[idz.a3]) / kz[idz.a3]
-        f = 1/2 * ((D - z[idz.D])^2+(a1 - z[idz.a1])^2+(a3 - z[idz.a3])^2+(x[idx.xcg] - z[idz.xcg])^2)
+        g[idg.D] = (D-bz[idz.D]) / kz[idz.D]
+        g[idg.a1] = (a1-bz[idz.a1]) / kz[idz.a1]
+        g[idg.a3] = (a3-bz[idz.a3]) / kz[idz.a3]
+        f = ((g[idg.D] - z[idz.D])^2 + (g[idg.a1] - z[idz.a1])^2+
+                (g[idg.a3] - z[idz.a3])^2+(x[idx.xcg] - z[idz.xcg])^2)
         return f
     end
     Ng = len(aero_output)
@@ -402,8 +404,9 @@ function aero_subspace(z,ipoptions=Dict())
     
     ipoptions["tol"] = 1e-6
     ipoptions["max_iter"] = 500
+    ipoptions["output_file"] = filename
     # ipoptions["linear_solver"] = "ma97"
-    options = SNOW.Options(derivatives=CentralFD(), solver=IPOPT(ipoptions))
+    options = SNOW.Options(derivatives=ForwardAD(), solver=SNOPT())#solver=IPOPT(ipoptions))
 
     lx = zeros(Nx) # lower bounds on x
     ux = ones(Nx) # upper bounds on x
@@ -412,26 +415,16 @@ function aero_subspace(z,ipoptions=Dict())
     xopt, fopt, info = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
     
     # Compute z star
-    zs = copy(z)
+    zs          = copy(z)
+    fun(g, xopt)
     zs[idz.xcg] = xopt[idx.xcg]
-    xopt .*= k
-    xopt .+= b
-    D, load_4g = aero(xopt[idx.alpha], xopt[idx.delta_e], xopt[idx.twist], xopt[idx.xcg])
-    a1 = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
-    a3 = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
-    D = (D-bz[idz.D]) / kz[idz.D]
-    a1 = (a1-bz[idz.a1]) / kz[idz.a1]
-    a3 = (a3-bz[idz.a3]) / kz[idz.a3]
-    zs[idz.D] = D
-    zs[idz.a1] = a1
-    zs[idz.a3] = a3
-    xopt .-= b
-    xopt ./= k
-
+    zs[idz.D]   = g[idg.D]
+    zs[idz.a1]  = g[idg.a1]
+    zs[idz.a3]  = g[idg.a3]
     return zs
 end
 
-function struc_subspace(z,ipoptions=Dict())
+function struc_subspace(z,filename, ipoptions=Dict{Any,Any}())
     # z = map(v->(v.ini-v.lb)./(v.ub-v.lb), global_variables)
     variables = mergevar(global_variables, struc_local)
     idx = indexbyname(variables)
@@ -474,8 +467,9 @@ function struc_subspace(z,ipoptions=Dict())
     end
     g = zeros(Ng)  # starting point
 
-    ipoptions["tol"] = 1e-6
+    ipoptions["tol"] = 1e-8
     ipoptions["max_iter"] = 500
+    ipoptions["output_file"] = filename
     options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=IPOPT(ipoptions))
     lx = zeros(Nx) # lower bounds on x
     ux = ones(Nx) # upper bounds on x
@@ -556,7 +550,7 @@ end
 #         @. g[idg.Cl] = Cl / 1.45 - 1
 #         g[idg.Cm_al] = Cm_al
 #         g[idg.Cm_al_4g] = Cm_al_4g
-#         g[idg.Dcalc] = (D-x[idx.D]) * 10 / W
+#         g[idg.D] = (D-x[idx.D]) * 10 / W
 #         g[idg.load_4g] = (2 * W - sum(load_4g))/2/W
 #         g[idg.Cm] = Cm
 #         g[idg.Cm_4g] = Cm_4g
