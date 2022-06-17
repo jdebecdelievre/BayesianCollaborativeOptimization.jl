@@ -89,6 +89,8 @@ function bco(variables, subspace_fun, options::BCOoptions; objective=default_obj
         else
             Z = [next!(Sz) for _=1:ini_samples]
         end
+        obj = objective.(Z)
+        save("$savedir/data.jld2","Z",Z,"obj",obj)
 
         # Evaluate subspaces
         for d=disciplines
@@ -141,6 +143,9 @@ function bco(variables, subspace_fun, options::BCOoptions; objective=default_obj
         retrain["n"] = 0
 
         # C/ Evaluate new sample
+        push!(Z,z)
+        push!(obj,objective(z))
+        save("$savedir/data.jld2","Z",Z,"obj",obj)
         for d=disciplines
             push!(data[d].Z, copy(data[d].Z[end]))
             getvar!(data[d].Z[end], z, idz[d], idz_all)
