@@ -28,7 +28,7 @@ B = [1, 2],
 )
 
 ##
-options = Options(n_ite=50, ini_samples=1)
+options = Options(n_ite=25, ini_samples=1, warm_start_sampler=100)
 solver = ADMM(idz, ρ=1.)
 solve(solver, subspace, idz, options)
 ddir = (; A="xpu/A.jld2", B="xpu/B.jld2")

@@ -96,15 +96,14 @@ function solve(solver::AbstractSolver,
     mkpath("$savedir/solver")
     while ite < n_ite+1 
         # A/ Get new point
-        z, eic = get_new_point(ite, solver, objective, data, idz, "$savedir/solver")
+        z, Zd, eic = get_new_point(ite, solver, objective, data, idz, "$savedir/solver")
 
         # B/ Evaluate and save new point
         for d=disciplines
-            zd = z[idz[d]]
-            zs = subspace_fun[d](zd, "$savedir/eval/$d/$(ite).txt")
-            sqJd = norm(zs-zd)
+            zs = subspace_fun[d](Zd[d], "$savedir/eval/$d/$(ite).txt")
+            sqJd = norm(zs-Zd[d])
             new_data = (;
-                Z=zd, Zs=zs, sqJ=sqJd, fsb=(sqJd<tol), ite=ite
+                Z=Zd[d], Zs=zs, sqJ=sqJd, fsb=(sqJd<tol), ite=ite
             )
             map((D,nd)->push!(D,nd), data[d], new_data)
             save_data("$savedir/$d.jld2",data[d])

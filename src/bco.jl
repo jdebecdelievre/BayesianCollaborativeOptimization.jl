@@ -53,6 +53,6 @@ function get_new_point(ite::Int64, solver::BCO, objective,
     #     z_ .= 0.
     # end
     # retrain["n"] = 0
-
-    return z, eic
+    Zd = map(id->z[id], idz)
+    return z, Zd, eic
 end
