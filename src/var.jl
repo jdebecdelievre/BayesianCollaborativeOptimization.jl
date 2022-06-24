@@ -26,19 +26,23 @@ function checkinput(k,N::Int64)
     return vect(k, N)
 end
 
-struct Var{N}
+struct Var{N,ng}
     ini::Vector{Float64}
     lb::Vector{Float64}
     ub::Vector{Float64}
-    group::Symbol
-    function Var(; lb, ub, ini=copy(lb), group::Symbol=:NoGroup, N=max(length(ini),length(lb),length(ub)))
+    group::NTuple{ng,Symbol}
+    function Var(; lb, ub, ini=copy(lb), group::Union{Symbol,NTuple{ng,Symbol}}=(), 
+                    N=max(length(ini),length(lb),length(ub))) where ng
         ini, lb, ub = checkinput(ini, N), checkinput(lb, N), checkinput(ub, N)
         ini, lb, ub = promote(ini, lb, ub)
+        if typeof(group) == Symbol
+            group = (group,)
+        end
         @assert (all(ini <= ub) && (ini >= lb)) "Initial guess not within bounds: $lb <= $ini <= $ub"
-        return new{N}(ini,lb,ub,group)
+        return new{N,ng}(ini,lb,ub,group)
     end
 end
-Var(group::Symbol; N::Int64=1) = Var(lb=zeros(N), ub=ones(N), group=group)
+Var(group::Symbol; N::Int64=1) = Var(lb=zeros(N), ub=ones(N), group=(group,))
 # Base.show(io::IO, v::Var) = println(io, "$(v.lb) ≤ $(v.ini) ≤ $(v.ub)")
 
 # Convenient index functions
@@ -68,34 +72,29 @@ end
 
 function index(V::NTV, group::Symbol) 
     i = 0
-    ind = []
+    ind = Int64[]
     for v=V
-        (v.group == group) && push!(ind, collect(1:len(v)) .+ i)
+        (group in v.group) && append!(ind, collect(1:len(v)) .+ i)
         i+=len(v)
     end
-    return SA[ind...]
+    return ind
 end
 
+"""
+All indexbyname and indexbygroup functions return an IndexMap:
+a NamedTuple connecting a symbol to a list of integers. Typical usage:
+1/ Create subvector:
+z_aero = z_all[idz.aero] 
+2/ Populate supervector
+z_all[idz.aero] .= z_aero (julia will automatically use a view of z_all to avoid copying)
+"""
+const IndexMap{fields,nfields} = NamedTuple{fields,NTuple{nfields,Vector{Int64}}}
 indexbyname(V::NTV) = NamedTuple(((keys(V)[i], index(V,i)) for i=1:length(V)))
 function indexbygroup(V::NTV) 
-groups = Tuple(unique(v.group for v=V))
-inds = [index(V,g) for g=groups]
-return NamedTuple{groups}(inds)
+    groups = Tuple(unique(vcat((collect(v.group) for v=V)...))) # TODO: find a better way to concatenate tuples!
+    inds = [index(V,g) for g=groups]
+    return NamedTuple{groups}(inds)
 end
-
-# getscaled(v::Var{1}, x::Vector,idx::Int64) = x[idx] * (v.ub[1] - v.lb[1]) + v.lb[1]
-# getscaled(v::Var{N}, x::Vector,idx::Int64) where N = SA[(x[idx-1+i] * (v.ub[i] - v.lb[i]) + v.lb[i] for i=1:N)...]
-
-# function unscale_unpack(x::Vector, V::NTV) 
-#     # less efficient due to type instability. Do not use within optimization loop
-#     idx = 1
-#     function helper(v::Var{N}, x) where N
-#         val = getscaled(v,x,idx)
-#         idx += N
-#         return val
-#     end
-#     return NamedTuple((name, helper(v,x)) for (name,v)=pairs(V))
-# end
 
 unpack(x::Vector, idxbname::NamedTuple) = map(i->x[i], idxbname)
 unscale(x::Real, v::Var{1}) = x * (v.ub[1] - v.lb[1]) + v.lb[1]
@@ -109,33 +108,33 @@ scale(x::SVector{N,<:Real}, v::Var{N}) where N = SA[((x[i] - v.lb[i]) * (v.ub[i]
 scale(x::Vector{<:Real}, v::Var{N}) where N = [(x[i] - v.lb[i])/(v.ub[i] - v.lb[i]) for i=1:N]
 
 function mergevar(V1::NTV, V2::NTV)
-# not very efficient but ok
-L = Pair{Symbol,Var}[]
-V = merge(V1,V2)
-shared_keys = intersect(keys(V1), keys(V2))
-for v = pairs(V)
-    vk = v[1]
-    if vk in shared_keys
-        @assert len(V1[vk]) == len(V2[vk]) "Variable $vk has length $(len(V1[vk])) and $(len(V2[vk]))"
-        ub = min.(V1[vk].ub, V2[vk].ub)
-        lb = max.(V1[vk].lb, V2[vk].lb)
-        ini = (V1[vk].ini .+ V2[vk].ini)./2
-        @. ini = min(ini, ub)
-        @. ini = max(ini, lb)
-        group = (V1[vk].group == V2[vk].group) ? V1[vk].group : Symbol(V1[vk].group, V2[vk].group)
-        push!(L, (vk=>Var(ini=ini, lb=lb, ub=ub, group=group)))
-    else
-        push!(L, v)
+    # not very efficient but ok
+    L = Pair{Symbol,Var}[]
+    V = merge(V1,V2)
+    shared_keys = intersect(keys(V1), keys(V2))
+    for v = pairs(V)
+        vk = v[1]
+        if vk in shared_keys
+            @assert len(V1[vk]) == len(V2[vk]) "Variable $vk has length $(len(V1[vk])) and $(len(V2[vk]))"
+            ub = min.(V1[vk].ub, V2[vk].ub)
+            lb = max.(V1[vk].lb, V2[vk].lb)
+            ini = (V1[vk].ini .+ V2[vk].ini)./2
+            @. ini = min(ini, ub)
+            @. ini = max(ini, lb)
+            group = (V1[vk].group == V2[vk].group) ? V1[vk].group : Symbol(V1[vk].group, V2[vk].group)
+            push!(L, (vk=>Var(ini=ini, lb=lb, ub=ub, group=group)))
+        else
+            push!(L, v)
+        end
     end
-end
-return NamedTuple(L)
+    return NamedTuple(L)
 end
 function mergevar(V1, V2, Vmore...)
-V = mergevar(V1,V2)
-for Vm=Vmore
-    V = mergevar(V,Vm)
-end
-return V
+    V = mergevar(V1,V2)
+    for Vm=Vmore
+        V = mergevar(V,Vm)
+    end
+    return V
 end
 
 """

@@ -22,6 +22,7 @@ function learn_feasible_set(data, savedir, options)
     Y   = [data.sqJ; 0*data.sqJ[ifs]]
     fsb = [data.fsb; data.fsb[ifs]]
     ∇Y  = (data.Z-data.Zs)
+    ∇Y  = [∇Y; ∇Y[ifs]]
     normalize!.(∇Y)
     ∇Y  = SVector{n}.(∇Y)
     

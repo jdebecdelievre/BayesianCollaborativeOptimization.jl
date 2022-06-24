@@ -1,10 +1,6 @@
 using BayesianCollaborativeOptimization
-using HouseholderNets
 using LinearAlgebra
 using JLD2
-using NLopt
-using Sobol
-using Printf
 using LaTeXStrings
 using Statistics
 
@@ -18,18 +14,35 @@ cB = [0.5, 0.75]
 subA(z,s) = z - ([(z[1]-cA[1]), (z[2]-cA[2])] / norm([(z[1]-cA[1]), (z[2]-cA[2])])).*max(0, sqrt((z[1]-cA[1])^2 +(z[2]-cA[2])^2)-.4)
 subB(z,s) = z - ([(z[1]-cB[1]), (z[2]-cB[2])] / norm([(z[1]-cB[1]), (z[2]-cB[2])])).*max(0, sqrt((z[1]-cB[1])^2 +(z[2]-cB[2])^2)-.4)
 opt = [sqrt(-0.25^2+.4^2)+0.5, 0.5]
-
+disciplines = keys(variables)
 subspace = (;
     A = subA,
     B = subB
     )
 
 HOME = pwd()
-disciplines = keys(variables)
 
-variables_all = mergevar(values(variables)...)
-idz = map(indexbyname, variables)
-idz_all = indexbyname(variables_all)
+idz = (;
+A = [1, 2],
+B = [1, 2],
+)
+
+##
+options = Options(n_ite=50, ini_samples=1)
+solver = ADMM(idz, ρ=1.)
+solve(solver, subspace, idz, options)
+ddir = (; A="xpu/A.jld2", B="xpu/B.jld2")
+data = map(load_data, ddir);
+##
+options = Options(n_ite=2, ini_samples=1)
+solver = BCO(N_epochs=10, stepsize=10.)
+solve(solver, subspace, idz, options)
+ddir = (; A="xpu/A.jld2", B="xpu/B.jld2")
+data = map(load_data, ddir);
+
+##
+edir = (; A="xpu/solver/training/A/ensemble.jld2", B="xpu/solver/training/A/ensemble.jld2")
+ensembles = map(e->load_ensemble(e),edir)
 
 ##
 for i=0:10

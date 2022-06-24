@@ -49,6 +49,25 @@ tip_chord  = root_chord  * taper # tip chord in m
 # Precompute friction drag
 CDp = (FuseDragArea +  2 * S) * CDpw / S
 
+### Global variables
+global_variables = (;
+    R   = Var(ini=4e3, lb=3000, ub=7000, group=(:struc,)),
+    D   = Var(ini=50., lb=W/30, ub=W/15, group=(:aero,:struc)),
+    a1  = Var(ini=3/4, lb=.5,   ub=1,    group=(:aero,:struc)),
+    a3  = Var(ini=0.,  lb=-.5,  ub=.5,   group=(:aero,:struc)),
+    xcg = Var(ini=3.,  lb=1,    ub=5,    group=(:aero,:struc))
+)
+
+k_aero = Tuple(k for (k,v)=pairs(global_variables) if :aero in v.group)
+v_aero = (v for v=global_variables if :aero in v.group)
+aero_global = NamedTuple{k_aero}(v_aero)
+
+k_struc = Tuple(k for (k,v)=pairs(global_variables) if :struc in v.group)
+v_struc = (v for v=global_variables if :struc in v.group)
+struc_global = NamedTuple{k_struc}(v_struc)
+
+tailless_idz = indexbygroup(global_variables)
+##
 #### ---- Aero ----
 function vtx_influence(x_c, y_c, x_l, y_l, x_r, y_r)
     AIC = zeros(length(y_c),length(y_l))
@@ -115,19 +134,6 @@ end
 const AIC_LU, TLmesh = prepare_aero()
 
 # global_variables
-aero_global = (
-    D   = Var(ini=50., lb=W/30, ub=W/15),
-    a1  = Var(ini=3/4, lb=.5,   ub=1),
-    a3  = Var(ini=0.,  lb=-.5,  ub=.5),
-    xcg = Var(ini=3.,  lb=1,    ub=5),
-)
-struc_global = (
-    R   = Var(ini=4e3, lb=3000, ub=7000),
-    D   = Var(ini=50., lb=W/30, ub=W/15),
-    a1  = Var(ini=3/4, lb=.5,   ub=1),
-    a3  = Var(ini=0.,  lb=-.5,  ub=.5),
-    xcg = Var(ini=3.,  lb=1,    ub=5),
-)
 global_variables = mergevar(struc_global, aero_global)
 @assert keys(global_variables)[1] == :R
 
@@ -347,7 +353,7 @@ Zopt = NamedTuple(Pair(k,(TL_optimum[k].-global_variables[k].lb)./(global_variab
 zopt = vcat(Zopt...)
 
 ##
-function aero_subspace(z,filename, ipoptions=Dict())
+function aero_subspace(z, savedir, ipoptions=Dict())
     """
     z is a NamedTuple of global variables
     """
@@ -404,7 +410,7 @@ function aero_subspace(z,filename, ipoptions=Dict())
     
     ipoptions["tol"] = 1e-6
     ipoptions["max_iter"] = 500
-    ipoptions["output_file"] = filename
+    ipoptions["output_file"] = "$savedir"
     # ipoptions["linear_solver"] = "ma97"
     options = SNOW.Options(derivatives=ForwardAD(), solver=SNOPT())#solver=IPOPT(ipoptions))
 
@@ -424,7 +430,7 @@ function aero_subspace(z,filename, ipoptions=Dict())
     return zs
 end
 
-function struc_subspace(z,filename, ipoptions=Dict{Any,Any}())
+function struc_subspace(z,savedir, ipoptions=Dict{Any,Any}())
     # z = map(v->(v.ini-v.lb)./(v.ub-v.lb), global_variables)
     variables = mergevar(global_variables, struc_local)
     idx = indexbyname(variables)
@@ -469,7 +475,7 @@ function struc_subspace(z,filename, ipoptions=Dict{Any,Any}())
 
     ipoptions["tol"] = 1e-8
     ipoptions["max_iter"] = 500
-    ipoptions["output_file"] = filename
+    ipoptions["output_file"] = "$savedir"
     options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=IPOPT(ipoptions))
     lx = zeros(Nx) # lower bounds on x
     ux = ones(Nx) # upper bounds on x

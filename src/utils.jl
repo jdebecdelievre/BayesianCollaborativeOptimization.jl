@@ -11,3 +11,27 @@ function get_metrics(savedir::String, disciplines::Tuple, zopt::AbstractVector, 
     end
     return metric, obj, sqJ
 end
+
+function avg_z(data::NamedTuple{disciplines}, row::Int64, idz::NamedTuple{disciplines}) where disciplines
+    Nz  = maximum(map(maximum,idz))
+    z   = zeros(Nz)
+    nid = zeros(Nz)
+    for d=disciplines
+        z[idz[d]] .+= data[d].Z[row]
+        nid[idz[d]] .+= 1.
+    end
+    @. z = z / nid
+    return z
+end
+
+function avg_zstar(data::NamedTuple{disciplines}, row::Int64, idz::NamedTuple{disciplines}, idz_all::NamedTuple) where disciplines
+    Nz  = maximum(map(maximum,idz))
+    z   = zeros(Nz)
+    nid = zeros(Nz)
+    for d=disciplines
+        z[idz[d]] .+= data[d].Zs[row]
+        nid[idz[d]] .+= 1.
+    end
+    @. z = z / nid
+    return z
+end
