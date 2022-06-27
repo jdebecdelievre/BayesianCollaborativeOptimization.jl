@@ -217,7 +217,7 @@ end
         sigma = Var(lb=-Inf, ub=0., N=ny),
         Wfuel = Var(lb=-Inf, ub=0. ),
         Wwing = Var(lb=-Inf, ub=0. ),
-        xcgcalc = Var(lb=0., ub=0.),
+        xcg = Var(lb=0., ub=0.),
         R = Var(lb=0., ub=1.),
     )
 end
@@ -366,8 +366,8 @@ BayesianCollaborativeOptimization.discipline_names(::Tailless) = (:struc, :aero)
 BayesianCollaborativeOptimization.indexmap(::Tailless) = tailless_idz
 BayesianCollaborativeOptimization.number_shared_variables(::Tailless) = 5
 
-function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z::AbstractArray, savedir::String, 
-    ipoptions::Dict{Any,Any} = Dict{Any,Any}("print_level"=>2, "file_print_level"=>5, "tol"=>1e-8, "output_file"=>"tmp.txt"))
+function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z::AbstractArray, filename::String, 
+    ipoptions::Dict{Any,Any} = Dict{Any,Any}("print_level"=>2, "file_print_level"=>5, "tol"=>1e-8, "output_file"=>"tmp.txt","linear_solver"=>"mumps"))
     """
     z is a NamedTuple of global variables
     """
@@ -434,20 +434,81 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
     zs[idz.xcg] = g[idg.xcg]
     zs[idz.R] = g[idg.R]
     
-    @assert sum(max(0., lg[i]-g[i])+ max(0., g[i]-ug[i]) for i=1:Ng) < 1e-6
+    viol = sum(max(0., lg[i]-g[i])+ max(0., g[i]-ug[i]) for i=1:Ng)
+    @assert (viol < 1e-6) "$viol"
     return zs
 end
 
-function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z::AbstractArray, savedir::String,
-    ipoptions::Dict{Any,Any} = Dict{Any,Any}("print_level"=>2, "file_print_level"=>5, "tol"=>1e-8, "output_file"=>"tmp.txt"))
+function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z::AbstractArray, filename::String,
+    ipoptions::Dict{Any,Any} = Dict{Any,Any}("print_level"=>5, "file_print_level"=>5, "tol"=>1e-8, "output_file"=>"tmp.txt","linear_solver"=>"mumps"))
 
+    # # z = map(v->(v.ini-v.lb)./(v.ub-v.lb), global_variables)
+    # variables = mergevar(global_variables, struc_local)
+    # idx = indexbyname(variables)
+    # idz = indexbyname(global_variables)
+    # idg = indexbyname(struc_output)
+    # k = upper(variables) - lower(variables) 
+    # b = lower(variables)
+    
+    # function fun(g, x)
+    #     # unscale
+    #     x .*= k
+    #     x .+= b
+
+    #     # Struct
+    #     load = 4 * W / half_span * (x[idx.a1].*sin.(TLmesh.theta_c) + x[idx.a3].*sin.(3*TLmesh.theta_c))
+    #     xcg, sigma, Wfuel, Wwing = structures(x[idx.thickness], x[idx.Wt], load)
+    #     @. g[idg.sigma] = abs(sigma) / sigma_failure - 1.
+    #     g[idg.xcgcalc] = (x[idx.xcg] - xcg)
+    #     g[idg.Wfuel] = Wfuel / W - 1.
+    #     g[idg.Wwing] = Wwing / W - 1.
+        
+    #     # Performance
+    #     R = performance(x[idx.D], Wfuel)
+    #     g[idg.Rcalc] = (x[idx.R] - R) / 5000
+
+    #     # rescale
+    #     x .-= b
+    #     x ./= k
+
+    #     return sum(sum((x[ix]-z[iz])^2 for (ix,iz)=zip(idx[k],idz[k])) for k=keys(idz))
+    # end
+    # Ng = len(struc_output)
+    # Nx = len(variables)
+
+    # x0 = ini_scaled(variables)  # starting point
+    # for k=keys(idz)
+    #     for (ix,iz)=zip(idx[k],idz[k]) 
+    #         x0[ix] = z[iz]
+    #     end
+    # end
+    # g = zeros(Ng)  # starting point
+
+    # ipoptions["tol"] = 1e-8
+    # ipoptions["max_iter"] = 500
+    # ipoptions["output_file"] = "$savedir"
+    # options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=IPOPT(ipoptions))
+    # lx = zeros(Nx) # lower bounds on x
+    # ux = ones(Nx) # upper bounds on x
+    # lg = lower(struc_output)
+    # ug = upper(struc_output) # upper bounds on g
+    # xopt, fopt, info, out = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
+    
+    # zs = copy(z)
+    # for k=keys(idz)
+    #     zs[idz[k]] = xopt[idx[k]]
+    # end
+    # return zs
     # z = map(v->(v.ini-v.lb)./(v.ub-v.lb), global_variables)
-    variables = mergevar(global_variables, struc_local)
+    variables = mergevar((; a1=struc_global.a1, a3=struc_global.a3, D=struc_global.D), struc_local)
     idx = indexbyname(variables)
     idz = indexbyname(global_variables)
     idg = indexbyname(struc_output)
     k = upper(variables) - lower(variables) 
     b = lower(variables)
+
+    kz = upper(global_variables) - lower(global_variables) 
+    bz = lower(global_variables)
     
     function fun(g, x)
         # unscale
@@ -458,45 +519,52 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z
         load = 4 * W / half_span * (x[idx.a1].*sin.(TLmesh.theta_c) + x[idx.a3].*sin.(3*TLmesh.theta_c))
         xcg, sigma, Wfuel, Wwing = structures(x[idx.thickness], x[idx.Wt], load)
         @. g[idg.sigma] = abs(sigma) / sigma_failure - 1.
-        g[idg.xcgcalc] = (x[idx.xcg] - xcg)
         g[idg.Wfuel] = Wfuel / W - 1.
         g[idg.Wwing] = Wwing / W - 1.
         
         # Performance
         R = performance(x[idx.D], Wfuel)
-        g[idg.Rcalc] = (x[idx.R] - R) / 5000
 
         # rescale
         x .-= b
         x ./= k
+        g[idg.xcg] = (xcg-bz[idz.xcg]) / kz[idz.xcg]
+        g[idg.R] = (R-bz[idz.R]) / kz[idz.R]
 
-        return sum(sum((x[ix]-z[iz])^2 for (ix,iz)=zip(idx[k],idz[k])) for k=keys(idz))
+        return ((x[idx.D] - z[idz.D])^2 + (x[idx.a1] - z[idz.a1])^2+
+        (x[idx.a3] - z[idz.a3])^2+(g[idg.xcg] - z[idz.xcg])^2+(g[idg.R] - z[idz.R])^2)
     end
     Ng = len(struc_output)
     Nx = len(variables)
 
     x0 = ini_scaled(variables)  # starting point
-    for k=keys(idz)
-        for (ix,iz)=zip(idx[k],idz[k]) 
-            x0[ix] = z[iz]
-        end
-    end
-    g = zeros(Ng)  # starting point
-
+    x0[idx.D]  = z[idz.D]
+    x0[idx.a1] = z[idz.a1]
+    x0[idx.a3] = z[idz.a3]
+    
     ipoptions["tol"] = 1e-8
     ipoptions["max_iter"] = 500
-    ipoptions["output_file"] = "$savedir"
-    options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=IPOPT(ipoptions))
+    ipoptions["output_file"] = filename
+    options = SNOW.Options(derivatives=ForwardAD(), solver=IPOPT(ipoptions))
     lx = zeros(Nx) # lower bounds on x
     ux = ones(Nx) # upper bounds on x
     lg = lower(struc_output)
     ug = upper(struc_output) # upper bounds on g
     xopt, fopt, info, out = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
+
+    # pack zs
+    g = zeros(Ng) 
+    fun(g, xopt)
+
+    zs          = copy(z)
+    zs[idz.D]   = xopt[idx.D]
+    zs[idz.a1]  = xopt[idx.a1]
+    zs[idz.a3]  = xopt[idx.a3]
+    zs[idz.xcg] = g[idg.xcg]
+    zs[idz.R]   = g[idg.R]
     
-    zs = copy(z)
-    for k=keys(idz)
-        zs[idz[k]] = xopt[idx[k]]
-    end
+    viol = sum(max(0., lg[i]-g[i])+ max(0., g[i]-ug[i]) for i=1:Ng)
+    @assert (viol < 1e-6) "$viol"
     return zs
 end
 

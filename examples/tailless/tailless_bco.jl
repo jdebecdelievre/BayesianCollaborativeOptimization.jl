@@ -4,29 +4,9 @@ Pkg.activate("/home/adgboost/.julia/dev/BayesianCollaborativeOptimization/")
 addprocs(7, exeflags="--project=$(Base.active_project())")
 
 @everywhere begin
-    using HouseholderNets
     using BayesianCollaborativeOptimization
-    const BCO = BayesianCollaborativeOptimization
     HOME = pwd()
     include("$HOME/examples/tailless/tailless.jl")
-
-
-    ## subspaces
-    ipoptions = Dict("print_level"=>2, "file_print_level"=>5, 
-                    "tol"=>1e-8, "output_file"=>"tmp.txt", "linear_solver"=>"ma97")
-    variables = (; 
-        struc = struc_global,
-        aero = aero_global)
-    subspace = (;
-        struc =(z,f)->struc_subspace(z,f, ipoptions),
-        aero = (z,f)->aero_subspace(z,f,ipoptions))
-
-    disciplines = keys(variables)
-
-    variables_all = mergevar(values(variables)...)
-    @assert keys(variables_all)[1] == :R
-    idz = map(indexbyname, variables)
-    idz_all = indexbyname(variables_all)
 
     Z0 =  [[0.65625, 0.46875, 0.09375, 0.46875, 0.28125],
     [0.03125, 0.34375, 0.71875, 0.59375, 0.65625],
@@ -50,23 +30,17 @@ addprocs(7, exeflags="--project=$(Base.active_project())")
     [0.3125, 0.9375, 0.0625, 0.5625, 0.9375]]
     
     function run(i)
-        # set initial value
-        v = unscale_unpack(Z0[i], idz_all, variables_all)
-        for k = keys(v)
-            variables_all[k].ini .= v[k]
-        end
-        @assert norm(ini_scaled(variables_all) - Z0[i]) < 1e-10
-
         savedir = "$HOME/examples/tailless/xpu$i"
-        options = BCOoptions(
+        solver  = BCO(Tailless(),
+            ntrials=2, nparticles=8, nlayers=0, lr=0.01,
+            αlr=.95, N_epochs=500, logfreq=5000, nresample=0,
+            dropprob=0.02, stepsize=1.)
+        options = SolveOptions(
             n_ite = 15, # number of iterations
             ini_samples= 0, # number of initial random samples. 0 to use provided z0
-            savedir=savedir, ntrials=2, nparticles=8, nlayers=0, lr=0.01,
-            warm_start_sampler=i-1, stepsize=1., tol=1e-4,
-            αlr=.95, N_epochs=2_500_000, logfreq=5000, nresample=0,
-            dropprob=0.02)
+            savedir=savedir, warm_start_sampler=i-1, tol=1e-4,)
 
-        obj, sqJ, fsb, Z = bco(variables, subspace, options)
+        obj, sqJ, fsb, Z = solve(solver, options,z0=Z0[i])
         metric = abs.(obj .- zopt[1]) + sum(sqJ)
     end
 
