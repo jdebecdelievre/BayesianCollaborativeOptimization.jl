@@ -51,8 +51,8 @@ function get_new_point(ite::Int64, solver::BCO, data::NamedTuple{disciplines}, s
 
     # A/ Fit ensemble
     @timeit to "learn" begin
-        trainingdir =  NamedTuple{disciplines}(map(d->"$savedir/training/$ite/$d", disciplines))
-        ensemble = map((d,t)-> (@timeit to "learn_$d" learn_feasible_set(solver, d,t)), data, trainingdir)
+        # trainingdir =  NamedTuple{disciplines}(map(d->"$savedir/training/$ite/$d", disciplines)
+        ensemble = NamedTuple{disciplines}(map(d -> (@timeit to "learn_$d" learn_feasible_set(solver, data[d], "$savedir/training/$ite/$d")), disciplines))
     end
     
     # B/ Minimize EIc

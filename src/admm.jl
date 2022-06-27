@@ -14,13 +14,15 @@ struct ADMM{problem,disciplines,ndisciplines} <: AbstractSolver{problem}
     ρ::Float64
     y::NamedTuple{disciplines,NTuple{ndisciplines,Vector{Float64}}} # Lagrange Multipliers
     yobj::Vector{Float64}
+    to::TimerOutput
     function ADMM(problem::pb; ρ::Float64=1.) where {pb<:AbstractProblem}
         disc = discipline_names(problem)
         idz  = indexmap(problem)
         Nz   = number_shared_variables(problem)
         y    = map(id->zeros(length(id)), idz)
         yobj = zeros(Nz)
-        return new{pb, disc,length(disc)}(problem, ρ, y, yobj)
+        to = TimerOutput()
+        return new{pb, disc,length(disc)}(problem, ρ, y, yobj, to)
     end
 end
 

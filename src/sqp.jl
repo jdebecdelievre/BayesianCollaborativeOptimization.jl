@@ -5,8 +5,10 @@ Sequential quadratic programming solution of CO
 struct SQP{prb} <: AbstractSolver{prb}
     problem::prb
     λ::Float64
+    to::TimerOutput
     function SQP(prb::problem; λ::Float64=1.) where {problem<:AbstractProblem}
-        new{problem}(prb, λ)
+        to = TimerOutput()
+        new{problem}(prb, λ, to)
     end
 end
 

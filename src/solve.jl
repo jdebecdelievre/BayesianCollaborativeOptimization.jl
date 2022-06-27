@@ -119,7 +119,7 @@ function solve(solver::AbstractSolver, options::SolveOptions;
         sqJ = map(D->D.sqJ,data)
         save("$savedir/data.jld2","Z",Z,"obj",obj,"sqJ",sqJ,"fsb",fsb)
         open("$savedir/msg.txt","a") do io
-            @printf io "%3i %.3e %.3e %.3e %2i \n" ite -z[1] sum(sqJ)[end] eic sum(fsb)[end]
+            @printf io "%3i %.3e %.3e %.3e %2i \n" ite -z[1] sum(sqJ)[end] eic_max sum(fsb)[end]
         end
         ite += 1
         end
