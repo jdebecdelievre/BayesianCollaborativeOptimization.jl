@@ -96,6 +96,15 @@ function indexbygroup(V::NTV)
     return NamedTuple{groups}(inds)
 end
 
+"""
+Subset of NamedTuple of Vars from the right group
+"""
+function subset(V::NTV, group::Symbol)
+    k = Tuple(k for (k,v)=pairs(V) if group in v.group)
+    v = (v for v=V if group in v.group)
+    return NamedTuple{k}(v)
+end
+
 unpack(x::Vector, idxbname::NamedTuple) = map(i->x[i], idxbname)
 unscale(x::Real, v::Var{1}) = x * (v.ub[1] - v.lb[1]) + v.lb[1]
 unscale(x::SVector{N,<:Real}, v::Var{N}) where N = SA[(x[i] * (v.ub[i] - v.lb[i]) + v.lb[i] for i=1:N)...]

@@ -37,7 +37,7 @@ addprocs(12, exeflags="--project=$(Base.active_project())")
 
     function run(i)
         savedir = "$HOME/test/twindisks_jun9_8/$i"
-        options = BCOoptions(
+        options = SolveOptions(
                 n_ite = 35, # number of iterations
                 ini_samples= 2, # number of initial random samples. 0 to use provided z0
                 savedir=savedir, nparticles=12, nlayers=0, lr=0.01,

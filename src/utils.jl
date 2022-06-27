@@ -12,6 +12,25 @@ function get_metrics(savedir::String, disciplines::Tuple, zopt::AbstractVector, 
     return metric, obj, sqJ
 end
 
+function datacheck(data::NamedTuple)
+    for d = keys(data)
+        D = data[d]
+        (; Z, Zs, sqJ) = D
+        Z = [Z; Zs]
+        sqJ = [sqJ; sqJ*0.]
+        l = length(Z)
+        for i=1:l
+            for j=i+1:l
+                dist = norm(Z[i]-Z[j])
+                    del = dist - abs(sqJ[i] - sqJ[j])
+                    if del < 0
+                        println("Lipshitz error between points $i and $j for $d: $del")
+                    end
+                end
+            end
+        end
+end
+
 function avg_z(data::NamedTuple{disciplines}, row::Int64, idz::NamedTuple{disciplines}) where disciplines
     Nz  = maximum(map(maximum,idz))
     z   = zeros(Nz)

@@ -2,12 +2,12 @@
 All solvers are subtypes of AbstractSolver.
 They must all implement the get_new_point method
 """
-abstract type AbstractSolver end
+abstract type AbstractSolver{pb<:AbstractProblem} end
 
 """
 Options structure for solution process
 """
-@with_kw struct Options
+@with_kw struct SolveOptions
     n_ite::Int64 = 30 # number of iterations
     ini_samples::Int64 = 2 # number of initial random samples. 0 to use provided z0
     iteration_restart::Int64 = 0 # Iteration Number at which to restart.
@@ -17,34 +17,26 @@ Options structure for solution process
 end
 
 """
-Default objective function to maximize.
-"""
-function default_obj(z,grad=nothing)
-    if typeof(grad) <: AbstractArray
-        grad .= 0.
-        grad[1] = 1.
-    end
-    return z[1]
-end
-
-"""
 Receives problem definition, solver type, options.
 """
-function solve(solver::AbstractSolver, 
-            subspace_fun::NamedTuple{disciplines}, 
-            idz::IndexMap{disciplines}, 
-            options::Options; objective=default_obj, z0=nothing) where disciplines
+function solve(solver::AbstractSolver, options::SolveOptions; 
+        z0::Union{Nothing, <:AbstractArray}=nothing)
     (; n_ite, ini_samples, iteration_restart, warm_start_sampler, tol, savedir) = options
+    
+    problem     = solver.problem
+    disciplines = discipline_names(problem)
+    Nz          = number_shared_variables(problem)
+    idz         = indexmap(problem)
+    to          = solver.to
 
     # create xp directory, save options
     mkpath(savedir)
-    open("$savedir/inputs.txt","w") do io
+    open("$savedir/msg.txt","w") do io
         println(io,options)
     end
-    JLD2.save("$savedir/inputs.jld2","options",options,"idz",idz)
+    JLD2.save("$savedir/inputs.jld2", "options", options, "idz", idz)
 
     # Create sampler
-    Nz = maximum(map(maximum,idz))
     Sz = SobolSeq(Nz)
     for _=1:warm_start_sampler
         next!(Sz)
@@ -52,7 +44,18 @@ function solve(solver::AbstractSolver,
 
     # Initial samples and ensemble
     map(d->mkpath("$savedir/eval/$d"), disciplines)
-    if iteration_restart < 1
+    if iteration_restart < 1        
+        # Get ini samples
+        if ini_samples == 0
+            @assert typeof(z0)!= Nothing
+            Z = [z0]
+            ini_samples += 1
+        else
+            Z = [next!(Sz) for _=1:ini_samples]
+        end
+        obj = map(z->objective(problem, z),Z)
+        save("$savedir/obj.jld2","Z",Z,"obj",obj)
+
         # Create data storage 
         data = NamedTuple{disciplines}(Tuple((; 
             Z   = [zeros(length(idz[d])) for _=1:(ini_samples)], 
@@ -62,24 +65,16 @@ function solve(solver::AbstractSolver,
             ite = (zeros(Int64,ini_samples)))
         for d = disciplines))
 
-        # get ini samples
-        if ini_samples == 0
-            @assert typeof(z0)!= Nothing
-            Z = [z0]
-        else
-            Z = [next!(Sz) for _=1:ini_samples]
-        end
-        obj = objective.(Z)
-        save("$savedir/obj.jld2","Z",Z,"obj",obj)
-
         # Evaluate subspaces
         for d=disciplines
             D = data[d]
+            @timeit to "ite0" begin
             for (i,z)=enumerate(Z)
                 D.Z[i]  .= z[idz[d]]
-                D.Zs[i] .= subspace_fun[d](D.Z[i], "$savedir/eval/$d/0_$i.txt")
+                @timeit to "$d" (D.Zs[i] .= subspace(problem, Val(d), D.Z[i], "$savedir/eval/$d/0_$i.txt"))
                 D.sqJ[i] = norm(D.Z[i] .- D.Zs[i])
                 D.fsb[i] = (D.sqJ[i]<tol)
+            end
             end
             save_data("$savedir/$d.jld2",D)
         end
@@ -90,17 +85,23 @@ function solve(solver::AbstractSolver,
     end
 
     # Optimization
-    @printf "%3s %9s %9s %9s %4s \n" "ite" "obj" "∑√J" "EIc" "Nfsb"
+    open("$savedir/msg.txt","a") do io
+        @printf io "%3s %9s %9s %9s %4s \n" "ite" "obj" "∑√J" "EIc" "Nfsb"
+    end
     ite = iteration_restart+1
     idata = length(Z)
     mkpath("$savedir/solver")
     while ite < n_ite+1 
+        @timeit to "ite$ite" begin
+
         # A/ Get new point
-        z, Zd, eic = get_new_point(ite, solver, objective, data, idz, "$savedir/solver")
+        @timeit to "solver" begin
+            z, Zd, eic_max = get_new_point(ite, solver, data, "$savedir/solver")
+        end
 
         # B/ Evaluate and save new point
         for d=disciplines
-            zs = subspace_fun[d](Zd[d], "$savedir/eval/$d/$(ite).txt")
+            @timeit to "$d" (zs = subspace(problem, Val(d), Zd[d], "$savedir/eval/$d/$(ite).txt"))
             sqJd = norm(zs-Zd[d])
             new_data = (;
                 Z=Zd[d], Zs=zs, sqJ=sqJd, fsb=(sqJd<tol), ite=ite
@@ -111,19 +112,32 @@ function solve(solver::AbstractSolver,
         idata += 1
         
         # C/ Save progress
-        o = objective(z)
-        glb = sum(map(D->D.fsb,data))
-        sqJ = sum(map(D->D.sqJ,data))
+        o = objective(problem, z)
         push!(Z,z)
         push!(obj,o)
-        save("$savedir/obj.jld2","Z",Z,"obj",obj,"sqJ",sqJ,"glb",glb)
-        @printf "%3i %.3e %.3e %.3e %2i \n" ite o sqJ[end] eic glb[end]
+        fsb = map(D->D.fsb,data)
+        sqJ = map(D->D.sqJ,data)
+        save("$savedir/data.jld2","Z",Z,"obj",obj,"sqJ",sqJ,"fsb",fsb)
+        open("$savedir/msg.txt","a") do io
+            @printf io "%3i %.3e %.3e %.3e %2i \n" ite -z[1] sum(sqJ)[end] eic sum(fsb)[end]
+        end
         ite += 1
+        end
     end
-    return data
+
+    # Print timer
+    to_flatten = TimerOutputs.flatten(to)
+    open("$savedir/msg.txt","a") do io
+        show(io, to)
+        show(io, to_flatten)
+    end
+
+    fsb = map(D->D.fsb,data)
+    sqJ = map(D->D.sqJ,data)
+    return obj, sqJ, fsb, Z
 end
 
-function load_data(filename)
+function load_data(filename::String)
     @assert (split(filename, ".")[end] == "jld2") "Filename extension must be jld2"
     dat = load(filename)
     return (; 
@@ -133,6 +147,10 @@ function load_data(filename)
         fsb= dat["fsb"],
         ite= dat["ite"],
     )
+end
+
+function load_data(savedir::String, disciplines::Tuple{Symbol,Symbol})
+    return NamedTuple{disciplines}(map(d->load_data("$savedir/$d.jld2"), disciplines))
 end
 
 function save_data(filename, D)

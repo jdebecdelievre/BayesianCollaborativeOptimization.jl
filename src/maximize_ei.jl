@@ -16,28 +16,29 @@ function eic_cache(ensembles::NamedTuple{dis,NTuple{nd,Vector{HouseholderNet{L,S
     return cache
 end
 
-
 """
 EIc with gradient calculation
 z, grad, z0: vectors of size n
+problem: problem to solve
 stepsize: scalar
-objective: objective function
 ensembles: NamedTuple{disciplines} of ensembles of HouseholderNets
 best: best objective so far
 idz: IndexMap to populate inputs to ensembles
 cache: result of EIC cache
 """
 function eic(z::V, grad::V, z0::V, 
-            stepsize::Float64, objective, ensembles::NamedTuple{disciplines,NTuple{nd, Vector{HouseholderNet{L,Sn,TF}}}} where {nd,L,Sn,TF}, 
-            best::Float64, idz::IndexMap{disciplines}, cache::NamedTuple=eic_cache(ensembles)) where {V<:AbstractVector,disciplines}
+            problem::AbstractProblem, stepsize::Float64, 
+            ensembles::NamedTuple{disciplines,NTuple{nd, Vector{HouseholderNet{L,Sn,TF}}}} where {nd,L,Sn,TF}, 
+            best::Float64, cache::NamedTuple=eic_cache(ensembles)) where {V<:AbstractVector,disciplines}
     # get preallocated buffers
     (; Zd, h, dhdx, dp, WZ) = cache
+    idz = indexmap(problem)
 
     # determine whether to compute the gradient
     g = length(grad) > 0
     
     # improvement (objective(z)-best) 
-    obj = g ? objective(z, grad) : objective(z)
+    obj = g ? objective(problem, z, grad) : objective(problem, z)
     ei     = (obj-best)
     val    = 1. #(ei > 0) dropping the max(0., ...) for now
     ei    *= -val
@@ -68,24 +69,14 @@ function eic(z::V, grad::V, z0::V,
     return ei
 end
 
-# EIc without gradient calculation
-function eic(z,z0,stepsize, objective, ensembles::NamedTuple{disciplines}, best, idz, cache=eic_cache(ensembles)) where disciplines
-    (; Zd, dp) = cache
-    for d=disciplines
-        Zd[d] .=  view(z,idz[d])
-    end
-    p = map((z,E,z_) -> HouseholderNets.predict(z,E,z_), Zd, ensembles, dp)
-    return -(objective(z)-best)*prod(p)*exp(-1/stepsize^2*(z-z0)⋅(z-z0))
-end
-
 """
 objective function, NamedTuple of ensembles, initial values
 """
-function maximize_ei(savedir::String, ensembles::NamedTuple{disciplines}, 
-                    data::NamedTuple{disciplines}, idz::NamedTuple{disciplines}, 
-                    objective, options::BCO) where disciplines
-    m = length(data[disciplines[1]].Z)
-    Nz = maximum(map(maximum,idz))
+function maximize_ei(solver::BCO, data::NamedTuple{disciplines}, ensembles::NamedTuple{disciplines}, savedir::String) where disciplines
+    m   = length(data[disciplines[1]].Z)
+    Nz  = number_shared_variables(solver.problem)
+    idz = indexmap(solver.problem)
+    to  = solver.to
     
     ## Initial guesses and best point
     z = zeros(Nz)
@@ -115,7 +106,7 @@ function maximize_ei(savedir::String, ensembles::NamedTuple{disciplines},
             gfs *= data[d].fsb[i]
         end
         z ./= nid
-        obj = objective(z)
+        obj = objective(solver.problem, z)
         if (gfs == 1) && (obj>best)
             best = obj
         end
@@ -132,12 +123,15 @@ function maximize_ei(savedir::String, ensembles::NamedTuple{disciplines},
         upper =  ones(n)
 
         # Start with CMA if local gradient is too small
+        eic(z0,z,z0,solver.problem, stepsize, ensembles, best, cache)
+        @timeit to "cma" begin
         if norm(z) < 1e-6
-            results = Evolutionary.optimize(z -> eic(z,copy(z0),stepsize, ensembles, best, idz, cache), 
+            results = Evolutionary.optimize(z -> eic(z,Float64[],copy(z0), solver.problem, stepsize, ensembles, best, cache), 
                         BoxConstraints(lower, upper), z0, 
                         CMAES(μ=50,sigma0=1.), Evolutionary.Options(iterations=5000))
             maxz, maxf, numevals = Evolutionary.minimizer(results), Evolutionary.minimum(results), Evolutionary.iterations(results)
             z0 .= maxz
+        end
         end
         
         # Cast to strict bounds before using SLSQP
@@ -145,19 +139,21 @@ function maximize_ei(savedir::String, ensembles::NamedTuple{disciplines},
         @. z0 = min(z0, 1-eps())
 
         # Use SLSQP
+        @timeit to "slsqp" begin
         opt = Opt(:LD_SLSQP, n)
         opt.lower_bounds = lower
         opt.upper_bounds = upper
         opt.xtol_rel = 1e-7
         opt.maxeval = 2500
-        opt.min_objective = (z,grad) -> eic(z, grad, copy(z0), stepsize, objective, ensembles, best, idz, cache)
+        opt.min_objective = (z,grad) -> eic(z, grad, copy(z0), solver.problem, stepsize, ensembles, best, cache)
         (maxf,maxz,ret) = optimize(opt, z0)
         numevals = opt.numevals
+        end
         return -maxf, maxz, numevals, ret
     end
     
     ## Run maximization of EIc for each initial guess
-    stepsize = ones(m) * options.stepsize
+    stepsize = ones(m) * solver.stepsize
     msg = Vector{Symbol}(undef,m)
     for i = 1:m
         EIc[i], z, ite[i], msg[i] = maximize(iniZ[i],stepsize[i])

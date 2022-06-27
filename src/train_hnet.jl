@@ -1,4 +1,4 @@
-function learn_feasible_set(data, savedir, options)
+function learn_feasible_set(options, data, savedir)
     (; nparticles,  nlayers, nresample, N_epochs, logfreq, lr, αlr, ntrials) = options
     ENV["GKSwstype"] = "100"
     
@@ -25,6 +25,7 @@ function learn_feasible_set(data, savedir, options)
     ∇Y  = [∇Y; ∇Y[ifs]]
     normalize!.(∇Y)
     ∇Y  = SVector{n}.(∇Y)
+    @assert length(X) == length(Y) == length(fsb) == length(∇Y)
     
     # Train nparticles nets
     loss = 10*ones(nparticles*ntrials)
@@ -47,7 +48,7 @@ function learn_feasible_set(data, savedir, options)
         CSV.write("$savedir/traininghistory$np.csv", hist)
         
         # Break if needed
-        loss[np] = hist.loss[end]
+        loss[np] = hist.loss[end] .+ eps() 
         if hist.loss[end]<1e-4
             nvalid += 1
         end
@@ -79,14 +80,14 @@ function save_ensemble(filename, ensemble)
     save(filename, "ensemble", ensemble_)
 end
 
-function load_ensemble(filename)
+function load_ensemble(filename::String)
     @assert (split(filename, ".")[end] == "jld2") "Filename extension must be jld2"
     ensemble = load(filename)["ensemble"]
-    # for i = eachindex(ensemble_)
-    #     for j = eachindex(ensemble[i].W)
-    #         ensemble[i].W[j] .= ensemble_[i].W[j]
-    #     end
-    #     ensemble[i].b .= ensemble_[i].b
-    # end
+    return ensemble
+end
+
+function load_ensemble(savedir::String, disciplines::Tuple{Symbol,Symbol})
+    netdir = NamedTuple{disciplines}(map(d->"$savedir/$d/ensemble.jld2",disciplines))
+    ensemble = map(load_ensemble, netdir)
     return ensemble
 end

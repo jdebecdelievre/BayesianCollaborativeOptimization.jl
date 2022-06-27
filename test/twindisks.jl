@@ -3,60 +3,99 @@ using LinearAlgebra
 using JLD2
 using LaTeXStrings
 using Statistics
-
-variables = (; 
-    A = (; x1=Var(lb=0, ub=1), x2=Var(lb=0, ub=1)),
-    B = (; x1=Var(lb=0, ub=1), x2=Var(lb=0, ub=1))
-)
-
-cA = [0.5, 0.25]
-cB = [0.5, 0.75]
-subA(z,s) = z - ([(z[1]-cA[1]), (z[2]-cA[2])] / norm([(z[1]-cA[1]), (z[2]-cA[2])])).*max(0, sqrt((z[1]-cA[1])^2 +(z[2]-cA[2])^2)-.4)
-subB(z,s) = z - ([(z[1]-cB[1]), (z[2]-cB[2])] / norm([(z[1]-cB[1]), (z[2]-cB[2])])).*max(0, sqrt((z[1]-cB[1])^2 +(z[2]-cB[2])^2)-.4)
-opt = [sqrt(-0.25^2+.4^2)+0.5, 0.5]
-disciplines = keys(variables)
-subspace = (;
-    A = subA,
-    B = subB
-    )
-
-HOME = pwd()
-
-idz = (;
-A = [1, 2],
-B = [1, 2],
-)
-
+using Parameters
 ##
-options = Options(n_ite=25, ini_samples=1, warm_start_sampler=100)
-solver = ADMM(idz, ρ=1.)
-solve(solver, subspace, idz, options)
-ddir = (; A="xpu/A.jld2", B="xpu/B.jld2")
-data = map(load_data, ddir);
-##
-options = Options(n_ite=2, ini_samples=1)
-solver = BCO(N_epochs=10, stepsize=10.)
-solve(solver, subspace, idz, options)
-ddir = (; A="xpu/A.jld2", B="xpu/B.jld2")
-data = map(load_data, ddir);
-
-##
-edir = (; A="xpu/solver/training/A/ensemble.jld2", B="xpu/solver/training/A/ensemble.jld2")
-ensembles = map(e->load_ensemble(e),edir)
-
-##
-for i=0:10
-    savedir = "$HOME/test/twindisks_jun17_2/$i"
-    options = BCOoptions(
-        n_ite = 10, # number of iterations
-        ini_samples= 2, # number of initial random samples. 0 to use provided z0
-        savedir=savedir, nparticles=12, nlayers=20, lr=0.01,
-        warm_start_sampler=2*i,
-        αlr=.5, N_epochs=500_000, logfreq=2000, nresample=0,
-        dropprob=0.01, tol=1e-6)
-    data = bco(variables, subspace, options)
+@consts begin
+    idz_twins = (; A=[1,2], B=[1,2])
+    cA = [0.5, 0.25]
+    cB = [0.5, 0.75]
+    opt = [sqrt(-0.25^2+.4^2)+0.5, 0.5]
 end
 
+struct TwinDisks <: AbstractProblem end # singleton type
+BayesianCollaborativeOptimization.discipline_names(::TwinDisks) = (:A, :B)
+BayesianCollaborativeOptimization.indexmap(::TwinDisks) = idz_twins
+BayesianCollaborativeOptimization.number_shared_variables(::TwinDisks) = 2
+BayesianCollaborativeOptimization.subspace(::TwinDisks, ::Val{:A}, z::AbstractArray,s::String) = z - ([(z[1]-cA[1]), (z[2]-cA[2])] / norm([(z[1]-cA[1]), (z[2]-cA[2])])).*max(0, sqrt((z[1]-cA[1])^2 +(z[2]-cA[2])^2)-.4)
+BayesianCollaborativeOptimization.subspace(::TwinDisks, ::Val{:B}, z::AbstractArray,s::String) = z - ([(z[1]-cB[1]), (z[2]-cB[2])] / norm([(z[1]-cB[1]), (z[2]-cB[2])])).*max(0, sqrt((z[1]-cB[1])^2 +(z[2]-cB[2])^2)-.4)
+
+
+##
+solver = SQP(TwinDisks(), λ=1.)
+options = SolveOptions(n_ite=25, ini_samples=1, warm_start_sampler=100)
+solve(solver, options)
+ddir = (; A="xpu/A.jld2", B="xpu/B.jld2")
+data = map(load_data, ddir);
+
+##
+solver = ADMM(TwinDisks(), ρ=1.)
+options = SolveOptions(n_ite=25, ini_samples=1, warm_start_sampler=100)
+solve(solver, options)
+ddir = (; A="xpu/A.jld2", B="xpu/B.jld2")
+data = map(load_data, ddir);
+
+##
+options = SolveOptions(n_ite=15, ini_samples=1)
+solver = BCO(TwinDisks(), N_epochs=100_000, stepsize=1.)
+solve(solver, options)
+ddir = (; A="xpu/A.jld2", B="xpu/B.jld2")
+data = map(load_data, ddir);
+
+##
+ite=3
+i = 1
+edir = (; A="xpu/solver/training/$ite/A/ensemble.jld2", B="xpu/solver/training/$ite//B/ensemble.jld2")
+ensembles = map(load_ensemble,edir)
+cache = eic_cache(ensembles)
+@load "xpu/solver/eic/$ite/eic.jld2" maxZ EIc iniZ stepsize
+@load "xpu/obj.jld2" Z obj glb
+E = z-> eic(z,Float64[], iniZ[i], TwinDisks(), stepsize[i], ensembles, 0., cache)
+# eic(z::V, grad::V, z0::V, 
+#             problem::AbstractProblem, stepsize::Float64, 
+#             ensembles::NamedTuple{disciplines,NTuple{nd, Vector{HouseholderNet{L,Sn,TF}}}} where {nd,L,Sn,TF}, 
+#             best::Float64, cache::NamedTuple=eic_cache(ensembles)) where {V<:AbstractVector,disciplines}
+using HouseholderNets
+showpr(Z[1:1+ite], E, glb[1:1+ite] .== 2)
+showpr(data.A.Z[1:1+ite], ensembles.A, data.A.fsb[1:1+ite])
+showpr(data.B.Z[1:1+ite], ensembles.B, data.B.fsb[1:1+ite])
+
+##
+HOME = pwd()
+prb = TwinDisks()
+sqp = SQP(prb, λ=1.)
+bco = BCO(prb, N_epochs=100_000, stepsize=1.)
+adm = ADMM(prb, ρ=1.)
+
+savedir = "$HOME/examples/twindisks/xp_jun27"
+for i=1:19
+    options = SolveOptions(tol=1e-6, n_ite=15, ini_samples=1, warm_start_sampler=i, savedir="$savedir/xpu$i/bco/")
+    solve(bco, options)
+    
+    options = SolveOptions(tol=1e-6, n_ite=25, ini_samples=1, warm_start_sampler=i, savedir="$savedir/xpu$i/sqp/")
+    solve(sqp, options)
+    
+    options = SolveOptions(tol=1e-6, n_ite=25, ini_samples=1, warm_start_sampler=i, savedir="$savedir/xpu$i/admm/")
+    solve(adm, options)
+end
+
+##
+savedir = "$HOME/examples/twindisks/xp_jun27/xpu1/bco"
+edir = (; A="$savedir/solver/training/2/A/ensemble.jld2", B="$savedir/solver/training/2/B/ensemble.jld2")
+ensembles = map(load_ensemble,edir)
+ddir = (; A="$savedir/A.jld2", B="$savedir/B.jld2")
+data = map(d->load_data(d),ddir);
+cache = eic_cache(ensembles)
+@load "$savedir/solver/eic/$ite/eic.jld2" maxZ EIc iniZ stepsize msg
+@load "$savedir/obj.jld2" Z obj glb
+E = z-> eic(z,Float64[], iniZ[i], TwinDisks(), stepsize[i], ensembles, 0., cache)
+# eic(z::V, grad::V, z0::V, 
+#             problem::AbstractProblem, stepsize::Float64, 
+#             ensembles::NamedTuple{disciplines,NTuple{nd, Vector{HouseholderNet{L,Sn,TF}}}} where {nd,L,Sn,TF}, 
+#             best::Float64, cache::NamedTuple=eic_cache(ensembles)) where {V<:AbstractVector,disciplines}
+using HouseholderNets
+showpr(Z[1:1+ite], E, glb[1:1+ite] .== 2)
+# showpr(data.A.Z[1:1+ite], ensembles.A, data.A.fsb[1:1+ite])
+# showpr(data.B.Z[1:1+ite], ensembles.B, data.B.fsb[1:1+ite])
 ##
 metric = [get_metrics( "$HOME/test/twindisks_jun17_2/$i", disciplines, opt, default_obj)[1] for i=0:2]
 lm = minimum(length(m) for m=metric)

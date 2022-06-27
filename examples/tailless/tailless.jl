@@ -2,72 +2,68 @@ using LinearAlgebra
 using BayesianCollaborativeOptimization
 using Snopt
 using SNOW
-using FiniteDiff
-
-const tol = 1e-7
-const TL_optimum = (D = 44.535857314079685, a1 = 0.8725964469247693, a3 = -0.20726629666356344, xcg = 3.912023450325287, R = 5741.697478177579, twist = [10.63646819832547, 9.98583555676163, 8.578137289289218, 7.984914143100919, 7.637829494329576, 7.420075796963346, 7.300820719288684, 7.336947685654138, 7.494792863212517, 7.071963950475457, 6.599451422214532, 6.078195888154806, 5.509562108922545, 4.8947157866769935, 4.2345417629166455, 3.528711592533222, 2.786857572652277, 1.9885910036632382, 1.144753612539409, -0.012915839725520684], alpha = 8.156226315114909, delta_e = -11.699951299009436, thickness = [0.003952060271571667, 0.0035224933357481144, 0.0031001273620913563, 0.0026882960282519535, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665], Wt = 55.74934541169471)
+import Parameters: @consts
 
 #### ---- Constant Inputs ----
-# Dimensionless data
-AR       = 15.
-taper    = 0.5
-t_c      = 0.12
-sweep    = 15.
-eta_prop = 0.8
-CDpw     = 0.009
-c_ref    = 1.
-ny       = 20 # total number of panels
-nde      = 4 # number of panels equipped with control surfaces
+@consts begin
+    # Dimensionless data
+    AR       = 15.
+    taper    = 0.5
+    t_c      = 0.12
+    sweep    = 15.
+    eta_prop = 0.8
+    CDpw     = 0.009
+    c_ref    = 1.
+    ny       = 20 # total number of panels
+    nde      = 4 # number of panels equipped with control surfaces
 
-# Data in imp units
-S             = 200. # ft^2
-sigma_failure = 40e3 * 12^2 # psf (pounds per sq. foot), 40 ksi
-FuseDragArea  = 1.5 # sqft
-g             = 32.1740 # ft/s^2
-W             = 1000. # lbs
-W0            = 300. # lbs
-SFC           = 0.8 / 550 / 3600 * 6076.12 # 0.8 lb / hr / hp in per nautical mile (hp = 550 ft lb / s)
-rho_al        = .101 * 12^3 # lb/ft^3
+    # Data in imp units
+    S             = 200. # ft^2
+    sigma_failure = 40e3 * 12^2 # psf (pounds per sq. foot), 40 ksi
+    FuseDragArea  = 1.5 # sqft
+    g             = 32.1740 # ft/s^2
+    W             = 1000. # lbs
+    W0            = 300. # lbs
+    SFC           = 0.8 / 550 / 3600 * 6076.12 # 0.8 lb / hr / hp in per nautical mile (hp = 550 ft lb / s)
+    rho_al        = .101 * 12^3 # lb/ft^3
 
-# # Data in SI units
-# S = 18.59 # m^2
-# sigma_failure = 275e6 #Pa 40 ksi
-# FuseDragArea = 0.139
-# g = 9.81
-# W = 453.5 * g
-# W0 = 136.1 * g
-# SFC = 0.0001351726666667  / g # J/kg, 0.8 lb / hr / hp x 608.277 / (3.6 x 109)
-# rho_al = 2795.67038 * g # N/m^3, or .101 lb/in^3
+    # # Data in SI units
+    # S = 18.59 # m^2
+    # sigma_failure = 275e6 #Pa 40 ksi
+    # FuseDragArea = 0.139
+    # g = 9.81
+    # W = 453.5 * g
+    # W0 = 136.1 * g
+    # SFC = 0.0001351726666667  / g # J/kg, 0.8 lb / hr / hp x 608.277 / (3.6 x 109)
+    # rho_al = 2795.67038 * g # N/m^3, or .101 lb/in^3
 
-# Planform specifications
-span       = sqrt(S * AR)
-half_span  = span / 2             # wing half-span in m
-mean_chord = S / span
-root_chord = mean_chord * 2 / (1+taper) # root chord in m
-tip_chord  = root_chord  * taper # tip chord in m
+    # Planform specifications
+    span       = sqrt(S * AR)
+    half_span  = span / 2             # wing half-span in m
+    mean_chord = S / span
+    root_chord = mean_chord * 2 / (1+taper) # root chord in m
+    tip_chord  = root_chord  * taper # tip chord in m
 
-# Precompute friction drag
-CDp = (FuseDragArea +  2 * S) * CDpw / S
+    # Precompute friction drag
+    CDp = (FuseDragArea +  2 * S) * CDpw / S
+end
 
-### Global variables
-global_variables = (;
-    R   = Var(ini=4e3, lb=3000, ub=7000, group=(:struc,)),
-    D   = Var(ini=50., lb=W/30, ub=W/15, group=(:aero,:struc)),
-    a1  = Var(ini=3/4, lb=.5,   ub=1,    group=(:aero,:struc)),
-    a3  = Var(ini=0.,  lb=-.5,  ub=.5,   group=(:aero,:struc)),
-    xcg = Var(ini=3.,  lb=1,    ub=5,    group=(:aero,:struc))
-)
 
-k_aero = Tuple(k for (k,v)=pairs(global_variables) if :aero in v.group)
-v_aero = (v for v=global_variables if :aero in v.group)
-aero_global = NamedTuple{k_aero}(v_aero)
+#### ---- Global variables ----
+@consts begin
+    global_variables = (;
+        R   = Var(ini=4e3, lb=3000, ub=7000, group=(:struc,)),
+        D   = Var(ini=50., lb=W/30, ub=W/15, group=(:aero,:struc)),
+        a1  = Var(ini=3/4, lb=.5,   ub=1,    group=(:aero,:struc)),
+        a3  = Var(ini=0.,  lb=-.5,  ub=.5,   group=(:aero,:struc)),
+        xcg = Var(ini=3.,  lb=1,    ub=5,    group=(:aero,:struc))
+    )
 
-k_struc = Tuple(k for (k,v)=pairs(global_variables) if :struc in v.group)
-v_struc = (v for v=global_variables if :struc in v.group)
-struc_global = NamedTuple{k_struc}(v_struc)
+    tailless_idz = indexbygroup(global_variables)
+    aero_global  = subset(global_variables, :aero)
+    struc_global = subset(global_variables, :struc)
+end
 
-tailless_idz = indexbygroup(global_variables)
-##
 #### ---- Aero ----
 function vtx_influence(x_c, y_c, x_l, y_l, x_r, y_r)
     AIC = zeros(length(y_c),length(y_l))
@@ -131,30 +127,27 @@ function prepare_aero()
 
     return AIC_LU, TLmesh
 end
-const AIC_LU, TLmesh = prepare_aero()
+@consts begin
+    AIC_LU, TLmesh = prepare_aero()
 
-# global_variables
-global_variables = mergevar(struc_global, aero_global)
-@assert keys(global_variables)[1] == :R
-
-# Aero
-aero_local = (
-    twist   = Var(ini= ones(ny)*5., lb=-5,  ub=15),
-    alpha   = Var(ini= 5, lb=0,   ub=15),
-    delta_e = Var(ini=-5, lb=-25, ub=0)
-)
-aero_output = (
-    qpos     = Var(lb=-Inf, ub=0.),
-    Cl       = Var(lb=-Inf, ub=0., N=ny),
-    Cm_al    = Var(lb=-Inf, ub=0.),
-    Cm_al_4g = Var(lb=-Inf, ub=0.),
-    load_4g  = Var(lb=-Inf, ub=0.),
-    D        = Var(lb=0., ub=1.),
-    Cm       = Var(lb=0., ub=0.),
-    Cm_4g    = Var(lb=0., ub=0.),
-    a1       = Var(lb=0., ub=1.),
-    a3       = Var(lb=0., ub=1.),
-)
+    aero_local = (
+        twist   = Var(ini= ones(ny)*5., lb=-5,  ub=15),
+        alpha   = Var(ini= 5, lb=0,   ub=15),
+        delta_e = Var(ini=-5, lb=-25, ub=0)
+    )
+    aero_output = (
+        qpos     = Var(lb=-Inf, ub=0.),
+        Cl       = Var(lb=-Inf, ub=0., N=ny),
+        Cm_al    = Var(lb=-Inf, ub=0.),
+        Cm_al_4g = Var(lb=-Inf, ub=0.),
+        load_4g  = Var(lb=-Inf, ub=0.),
+        D        = Var(lb=0., ub=1.),
+        Cm       = Var(lb=0., ub=0.),
+        Cm_4g    = Var(lb=0., ub=0.),
+        a1       = Var(lb=0., ub=1.),
+        a3       = Var(lb=0., ub=1.),
+    )
+end
 
 function aero(alpha, delta_e, twist, xcg)
     pnl = TLmesh.panel_size
@@ -214,20 +207,21 @@ function aero(alpha, delta_e, twist, xcg)
     return D, load_4g, Cl, Cm, Cm_4g, q, Cm_al, Cm_al_4g
 end
 
-# Struc
-struc_local = (
-    thickness = Var(ini=TLmesh.beam_height/16, lb=1/12/32, ub=TLmesh.beam_height/2),
-    Wt        = Var(ini=50., lb=1, ub=100)
-)
-struc_output = (
-    sigma = Var(lb=-Inf, ub=0., N=ny),
-    Rcalc = Var(lb=-eps(), ub=0. ),
-    Wfuel = Var(lb=-Inf, ub=0. ),
-    Wwing = Var(lb=-Inf, ub=0. ),
-    xcgcalc = Var(lb=0., ub=0.),
-)
-
 #### ---- Structures ----
+@consts begin
+    struc_local = (
+        thickness = Var(ini=TLmesh.beam_height/16, lb=1/12/32, ub=TLmesh.beam_height/2),
+        Wt        = Var(ini=50., lb=1, ub=100)
+    )
+    struc_output = (
+        sigma = Var(lb=-Inf, ub=0., N=ny),
+        Wfuel = Var(lb=-Inf, ub=0. ),
+        Wwing = Var(lb=-Inf, ub=0. ),
+        xcgcalc = Var(lb=0., ub=0.),
+        R = Var(lb=0., ub=1.),
+    )
+end
+
 function structures(thickness, Wt, loads)
     (; y_c, y_vtx, beam_height, sparcap_width) = TLmesh
     pnl = TLmesh.panel_size
@@ -270,56 +264,57 @@ function performance(D, Wfuel)
     return R
 end
 
-# Var helpers
-variables = mergevar(global_variables, aero_local, struc_local)
-constraints = mergevar(aero_output, struc_output)
-idx = indexbyname(variables)
-idg = indexbyname(constraints)
-k = upper(variables) - lower(variables) 
-b = lower(variables)
-
-# All together solution
-function aao(g, x)
-    # unscale
-    x .*= k
-    x .+= b
-
-    # Aero
-    D, load_4g, Cl, Cm, Cm_4g, q, Cm_al, Cm_al_4g = aero(x[idx.alpha], x[idx.delta_e], x[idx.twist], x[idx.xcg])
-    g[idg.qpos] = -q/W
-    @. g[idg.Cl] = Cl / 1.45 - 1
-    g[idg.Cm_al] = Cm_al
-    g[idg.Cm_al_4g] = Cm_al_4g
-    g[idg.D] = (D-variables.D.lb) / (variables.D.ub-variables.D.lb)
-    g[idg.load_4g] = (2 * W - sum(load_4g))/2/W
-    g[idg.Cm] = Cm
-    g[idg.Cm_4g] = Cm_4g
-
-    a1 = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
-    a3 = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
-    g[idg.a1] = (a1 - variables.a1.lb) / (variables.a1.ub-variables.a1.lb)
-    g[idg.a3] = (a3 - variables.a3.lb) / (variables.a3.ub-variables.a3.lb)
-
-    # Struct
-    load = 4 * W / half_span * (a1.*sin.(TLmesh.theta_c) + a3.*sin.(3*TLmesh.theta_c))
-    xcg, sigma, Wfuel, Wwing = structures(x[idx.thickness], x[idx.Wt], load)
-    @. g[idg.sigma] = abs(sigma) / sigma_failure - 1.
-    g[idg.xcgcalc] = (x[idx.xcg] - xcg)
-    g[idg.Wfuel] = Wfuel / W - 1.
-    g[idg.Wwing] = Wwing / W - 1.
-    
-    # Performance
-    R = performance(x[idx.D], Wfuel)
-    g[idg.Rcalc] = (x[idx.R] - R) / 5000
-    x .-= b
-    x ./= k
-
-    # Objective
-    return -x[idx.R]
-
-end
-
+#### ---- All-at-once Solution ----
 function solve_aao()
+    @assert keys(global_variables)[1] == :R
+
+    variables   = mergevar((; xcg=global_variables.xcg), aero_local, struc_local)
+    constraints = mergevar(aero_output, struc_output)
+    idx         = indexbyname(variables)
+    idg         = indexbyname(constraints)
+    k           = upper(variables) - lower(variables)
+    b           = lower(variables)
+
+    function aao(g, x)
+        # unscale
+        x .*= k
+        x .+= b
+
+        # Aero
+        D, load_4g, Cl, Cm, Cm_4g, q, Cm_al, Cm_al_4g = aero(x[idx.alpha], x[idx.delta_e], x[idx.twist], x[idx.xcg])
+        g[idg.qpos] = -q/W
+        @. g[idg.Cl] = Cl / 1.45 - 1
+        g[idg.Cm_al] = Cm_al
+        g[idg.Cm_al_4g] = Cm_al_4g
+        g[idg.D] = (D-variables.D.lb[1]) / (variables.D.ub[1]-variables.D.lb[1])
+        g[idg.load_4g] = (2 * W - sum(load_4g))/2/W
+        g[idg.Cm] = Cm
+        g[idg.Cm_4g] = Cm_4g
+
+        a1 = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
+        a3 = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
+        g[idg.a1] = (a1 - variables.a1.lb[1]) / (variables.a1.ub[1]-variables.a1.lb[1])
+        g[idg.a3] = (a3 - variables.a3.lb[1]) / (variables.a3.ub[1]-variables.a3.lb[1])
+        
+        # Struct
+        load = 4 * W / half_span * (a1.*sin.(TLmesh.theta_c) + a3.*sin.(3*TLmesh.theta_c))
+        xcg, sigma, Wfuel, Wwing = structures(x[idx.thickness], x[idx.Wt], load)
+        @. g[idg.sigma] = abs(sigma) / sigma_failure - 1.
+        g[idg.xcgcalc] = (x[idx.xcg] - xcg)
+        g[idg.Wfuel] = Wfuel / W - 1.
+        g[idg.Wwing] = Wwing / W - 1.
+        g[idg.R] = (R - variables.R.lb[1]) / (variables.R.ub[1]-variables.R.lb[1])
+        
+        # Performance
+        R = performance(D, Wfuel)
+        x .-= b
+        x ./= k
+
+        # Objective
+        return -R
+
+    end
+
     Ng = len(constraints)
     Nx = len(variables)
 
@@ -348,89 +343,104 @@ function solve_aao()
     return v
 end
 
-# v = solve_aao()
-Zopt = NamedTuple(Pair(k,(TL_optimum[k].-global_variables[k].lb)./(global_variables[k].ub-global_variables[k].lb)) for k=keys(global_variables))
-zopt = vcat(Zopt...)
+#### ---- Solution ----
+@consts begin
+    tailless_optimum = (;
+        D = 44.535857314079685, 
+        a1 = 0.8725964469247693, 
+        a3 = -0.20726629666356344, 
+        xcg = 3.912023450325287, 
+        R = 5741.697478177579, 
+        twist = [10.63646819832547, 9.98583555676163, 8.578137289289218, 7.984914143100919, 7.637829494329576, 7.420075796963346, 7.300820719288684, 7.336947685654138, 7.494792863212517, 7.071963950475457, 6.599451422214532, 6.078195888154806, 5.509562108922545, 4.8947157866769935, 4.2345417629166455, 3.528711592533222, 2.786857572652277, 1.9885910036632382, 1.144753612539409, -0.012915839725520684], 
+        alpha = 8.156226315114909, 
+        delta_e = -11.699951299009436, 
+        thickness = [0.003952060271571667, 0.0035224933357481144, 0.0031001273620913563, 0.0026882960282519535, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665], 
+        Wt = 55.74934541169471)
+    Zopt = NamedTuple(Pair(k,(tailless_optimum[k].-global_variables[k].lb)./(global_variables[k].ub-global_variables[k].lb)) for k=keys(global_variables))
+    zopt = vcat(Zopt...)
+end
 
-##
-function aero_subspace(z, savedir, ipoptions=Dict())
+#### ---- Collaborative Optimization ----
+struct Tailless <: AbstractProblem end
+BayesianCollaborativeOptimization.discipline_names(::Tailless) = (:struc, :aero)
+BayesianCollaborativeOptimization.indexmap(::Tailless) = tailless_idz
+BayesianCollaborativeOptimization.number_shared_variables(::Tailless) = 5
+
+function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z::AbstractArray, savedir::String, 
+    ipoptions::Dict{Any,Any} = Dict{Any,Any}("print_level"=>2, "file_print_level"=>5, "tol"=>1e-8, "output_file"=>"tmp.txt"))
     """
     z is a NamedTuple of global variables
     """
-    variables = mergevar((; xcg=aero_global.xcg), aero_local)
+    variables = mergevar((; a1=struc_global.a1, a3=struc_global.a3, D=struc_global.D), struc_local)
     idx = indexbyname(variables)
-    idz = indexbyname(aero_global)
-    idg = indexbyname(aero_output)
+    idz = indexbyname(global_variables)
+    idg = indexbyname(struc_output)
     k = upper(variables) - lower(variables) 
     b = lower(variables)
 
-    # unscale z
-    kz = upper(aero_global) - lower(aero_global) 
-    bz = lower(aero_global)
-
+    kz = upper(global_variables) - lower(global_variables) 
+    bz = lower(global_variables)
+    
     function fun(g, x)
-        g.= 0.
         # unscale
         x .*= k
         x .+= b
 
-        # Aero
-        D, load_4g, Cl, Cm, Cm_4g, q, Cm_al, Cm_al_4g = aero(x[idx.alpha], x[idx.delta_e], x[idx.twist], x[idx.xcg])
-
-        g[idg.qpos] = -q/W
-        @. g[idg.Cl] = Cl / 1.45 - 1
-        g[idg.Cm_al] = Cm_al
-        g[idg.Cm_al_4g] = Cm_al_4g
-        g[idg.load_4g] = (2 * W - sum(load_4g))/2/W
-        g[idg.Cm] = Cm
-        g[idg.Cm_4g] = Cm_4g
-
-        # Compute Loads ROM
-        a1 = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
-        a3 = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
+        # Struct
+        load = 4 * W / half_span * (x[idx.a1].*sin.(TLmesh.theta_c) + x[idx.a3].*sin.(3*TLmesh.theta_c))
+        xcg, sigma, Wfuel, Wwing = structures(x[idx.thickness], x[idx.Wt], load)
+        @. g[idg.sigma] = abs(sigma) / sigma_failure - 1.
+        g[idg.Wfuel] = Wfuel / W - 1.
+        g[idg.Wwing] = Wwing / W - 1.
         
+        # Performance
+        R = performance(x[idx.D], Wfuel)
+
         # rescale
         x .-= b
         x ./= k
+        g[idg.xcg] = (xcg-bz[idz.xcg]) / kz[idz.xcg]
+        g[idg.R] = (R-bz[idz.R]) / kz[idz.R]
 
-        # objective function
-        g[idg.D] = (D-bz[idz.D]) / kz[idz.D]
-        g[idg.a1] = (a1-bz[idz.a1]) / kz[idz.a1]
-        g[idg.a3] = (a3-bz[idz.a3]) / kz[idz.a3]
-        f = ((g[idg.D] - z[idz.D])^2 + (g[idg.a1] - z[idz.a1])^2+
-                (g[idg.a3] - z[idz.a3])^2+(x[idx.xcg] - z[idz.xcg])^2)
-        return f
+        return ((x[idx.D] - z[idz.D])^2 + (x[idx.a1] - z[idz.a1])^2+
+        (x[idx.a3] - z[idz.a3])^2+(g[idg.xcg] - z[idz.xcg])^2+(g[idg.R] - z[idz.R])^2)
     end
-    Ng = len(aero_output)
+    Ng = len(struc_output)
     Nx = len(variables)
 
     x0 = ini_scaled(variables)  # starting point
-    x0[idx.xcg] = z[idz.xcg]
-    g = zeros(Ng)  # starting point
+    x0[idx.D]  = z[idz.D]
+    x0[idx.a1] = z[idz.a1]
+    x0[idx.a3] = z[idz.a3]
     
-    ipoptions["tol"] = 1e-6
+    ipoptions["tol"] = 1e-8
     ipoptions["max_iter"] = 500
-    ipoptions["output_file"] = "$savedir"
-    # ipoptions["linear_solver"] = "ma97"
-    options = SNOW.Options(derivatives=ForwardAD(), solver=SNOPT())#solver=IPOPT(ipoptions))
-
+    ipoptions["output_file"] = filename
+    options = SNOW.Options(derivatives=ForwardAD(), solver=IPOPT(ipoptions))
     lx = zeros(Nx) # lower bounds on x
     ux = ones(Nx) # upper bounds on x
-    lg = lower(aero_output)
-    ug = upper(aero_output) # upper bounds on g
-    xopt, fopt, info = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
-    
-    # Compute z star
-    zs          = copy(z)
+    lg = lower(struc_output)
+    ug = upper(struc_output) # upper bounds on g
+    xopt, fopt, info, out = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
+
+    # pack zs
+    g = zeros(Ng) 
     fun(g, xopt)
-    zs[idz.xcg] = xopt[idx.xcg]
-    zs[idz.D]   = g[idg.D]
-    zs[idz.a1]  = g[idg.a1]
-    zs[idz.a3]  = g[idg.a3]
+
+    zs = copy(z)
+    zs[idz.D] = xopt[idx.D]
+    zs[idz.a1] = xopt[idx.a1]
+    zs[idz.a3] = xopt[idx.a3]
+    zs[idz.xcg] = g[idg.xcg]
+    zs[idz.R] = g[idg.R]
+    
+    @assert sum(max(0., lg[i]-g[i])+ max(0., g[i]-ug[i]) for i=1:Ng) < 1e-6
     return zs
 end
 
-function struc_subspace(z,savedir, ipoptions=Dict{Any,Any}())
+function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z::AbstractArray, savedir::String,
+    ipoptions::Dict{Any,Any} = Dict{Any,Any}("print_level"=>2, "file_print_level"=>5, "tol"=>1e-8, "output_file"=>"tmp.txt"))
+
     # z = map(v->(v.ini-v.lb)./(v.ub-v.lb), global_variables)
     variables = mergevar(global_variables, struc_local)
     idx = indexbyname(variables)
@@ -494,12 +504,15 @@ function solve_co()
     cotol = 1e-4
     ipoptions=Dict("print_level"=>2, "tol"=>1e-6, "max_iter"=>500)
     idz = indexbyname(global_variables)
+    prob = Tailless()
+    aero = Val(:aero)
+    struc = Val(:struc)
 
     function cofun(g, df, dg, z)
         # Constraints
-        zStar_aero = aero_subspace(z,ipoptions)
+        zStar_aero = subspace(prob, aero, z,ipoptions)
         @. dg[1,:] = z-zStar_aero
-        zStar_struc = struc_subspace(z,ipoptions)
+        zStar_struc = subspace(prob, struc, z,ipoptions)
         @. dg[2,:] = z-zStar_struc
         g[1] = (dg[1,:] ⋅ dg[1,:])/2
         g[2] = (dg[2,:] ⋅ dg[2,:])/2
@@ -531,93 +544,3 @@ function solve_co()
     end
     return xopt
 end
-# ##
-# function aero_subspace(z,ipoptions=Dict())
-#     """
-#     z is a NamedTuple of global variables
-#     """
-#     # z = map(v->(v.ini-v.lb)./(v.ub-v.lb), global_variables)
-#     variables = mergevar(global_variables, aero_local)
-#     idx = indexbyname(variables)
-#     idz = indexbyname(global_variables)
-#     idg = indexbyname(aero_output)
-#     k = upper(variables) - lower(variables) 
-#     b = lower(variables)
-
-#     function aerocon(g,x)
-#         # unscale
-#         x .*= k
-#         x .+= b
-
-#         # Aero
-#         D, load_4g, Cl, Cm, Cm_4g, q, Cm_al, Cm_al_4g = aero(x[idx.alpha], x[idx.delta_e], x[idx.twist], x[idx.xcg])
-
-#         g[idg.qpos] = -q/W
-#         @. g[idg.Cl] = Cl / 1.45 - 1
-#         g[idg.Cm_al] = Cm_al
-#         g[idg.Cm_al_4g] = Cm_al_4g
-#         g[idg.D] = (D-x[idx.D]) * 10 / W
-#         g[idg.load_4g] = (2 * W - sum(load_4g))/2/W
-#         g[idg.Cm] = Cm
-#         g[idg.Cm_4g] = Cm_4g
-
-#         # Compute Loads ROM
-#         a1 = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
-#         a3 = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
-#         g[idg.a1calc] = (a1 - x[idx.a1])
-#         g[idg.a3calc] = (a3 - x[idx.a3])
-
-#         # rescale
-#         x .-= b
-#         x ./= k
-#         nothing
-#     end
-    
-#     function fun(g, df, dg, x)
-#         # Constraints
-#         aerocon(g,x)
-#         FiniteDiff.finite_difference_jacobian!(dg, aerocon, x)#, Val{:central})
-
-#         df .= 0.
-#         for k=keys(idz)
-#             for (ix,iz)=zip(idx[k],idz[k])
-#                 df[ix] = (x[ix]-z[iz])
-#             end
-#         end
-#         f = (df⋅df)/2
-#         return f
-#     end
-#     Ng = len(aero_output)
-#     Nx = len(variables)
-
-#     x0 = ini_scaled(variables)  # starting point
-#     for k=keys(idz)
-#         for (ix,iz)=zip(idx[k],idz[k]) 
-#             x0[ix] = z[iz]
-#         end
-#     end
-#     g = zeros(Ng)  # starting point
-
-#     lx = zeros(Nx) # lower bounds on x
-#     ux = ones(Nx) # upper bounds on x
-#     lg = lower(aero_output)
-#     ug = upper(aero_output) # upper bounds on g
-    
-#     ipoptions["tol"] = 1e-5
-#     ipoptions["max_iter"] = 300
-#     # ipoptions["linear_solver"] = "ma97"
-#     options = SNOW.Options(derivatives=UserDeriv(), solver=IPOPT(ipoptions))
-
-#     xopt, fopt, info = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
-    
-#     df = copy(xopt)
-#     dg = zeros(Ng, Nx)
-#     fun(g, df, dg, xopt)
-    
-#     zs = copy(z)
-#     for k=keys(idz)
-#         zs[idz[k]] = xopt[idx[k]]
-#     end
-#     return zs
-# end
-##

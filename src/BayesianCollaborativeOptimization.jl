@@ -16,16 +16,23 @@ using HouseholderNets
 using CSV
 using Parameters
 using NLopt
+using TimerOutputs
 
 include("utils.jl")
-export get_metrics
+export get_metrics, datacheck
 
 include("var.jl")
 export Var, ini, lower, upper, varnames, len, index, indexbyname, indexbygroup, len, mergevar, ini_scaled, get_scaled
-export unscale_unpack, unpack, getvar!, scale
+export unscale_unpack, unpack, getvar!, scale, subset
+
+include("problem.jl")
+export AbstractProblem, indexmap, objective, discipline_names, indexmap, subspace, number_shared_variables
 
 include("solve.jl")
-export solve, load_data, save_data, trim_data!, default_obj, Options
+export solve, load_data, save_data, trim_data!, SolveOptions
+
+include("sqp.jl")
+export SQP
 
 include("admm.jl")
 export ADMM
