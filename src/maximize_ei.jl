@@ -84,7 +84,7 @@ function maximize_ei(solver::BCO, data::NamedTuple{disciplines}, ensembles::Name
     ite = zeros(Int64,m)
     maxZ = [copy(z) for _=1:m]
     iniZ = [copy(z) for _=1:m]
-    best = 0.
+    best = objective_lowerbound(solver.problem)
     nid = copy(z)
     for i = 1:m
         # Set z to average zstar from disciplines
@@ -97,9 +97,9 @@ function maximize_ei(solver::BCO, data::NamedTuple{disciplines}, ensembles::Name
         @. iniZ[i] = z / nid
         
         # Find best point so far
-        gfs = 1
+        gfs  = 1
         nid .= 0.
-        z .= 0.
+        z   .= 0.
         for d=disciplines
             z[idz[d]]  .+= data[d].Z[i]
             nid[idz[d]] .+= 1.
@@ -156,10 +156,10 @@ function maximize_ei(solver::BCO, data::NamedTuple{disciplines}, ensembles::Name
     stepsize = ones(m) * solver.stepsize
     msg = Vector{Symbol}(undef,m)
     for i = 1:m
-        EIc[i], z, ite[i], msg[i] = maximize(iniZ[i],stepsize[i])
+        EIc[i], z, ite[i], msg[i] = maximize(copy(iniZ[i]),stepsize[i])
         if EIc[i] < 1e-4
             stepsize[i] *= 2
-            EIc[i], z, ite[i], msg[i] = maximize(iniZ[i],stepsize[i])
+            EIc[i], z, ite[i], msg[i] = maximize(copy(iniZ[i]),stepsize[i])
         end
         maxZ[i] .= z
     end

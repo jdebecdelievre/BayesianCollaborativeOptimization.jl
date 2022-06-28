@@ -23,18 +23,18 @@ struct BCO{problem} <: AbstractSolver{problem}
 
     function BCO(problem::prb;
             # Training
-            nparticles::Int64 = 12,
-            ntrials::Int64 = 1,
+            nparticles::Int64 = 6,
+            ntrials::Int64 = 2,
             nlayers::Int64 = 20,
             lr::Float64 = 0.01,
-            αlr::Float64 = .5,
-            N_epochs::Int64 = 100000,
+            αlr::Float64 = .95,
+            N_epochs::Int64 = 500_000,
             logfreq::Int64 = 1000,
             nresample::Int64 = 0,
             dropprob::Float64 = 0.,
 
             # Minimization
-            stepsize::Float64=.3
+            stepsize::Float64=1.
 
             ) where {prb<:AbstractProblem}
         to = TimerOutput()

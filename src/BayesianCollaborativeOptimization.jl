@@ -26,7 +26,7 @@ export Var, ini, lower, upper, varnames, len, index, indexbyname, indexbygroup, 
 export unscale_unpack, unpack, getvar!, scale, subset
 
 include("problem.jl")
-export AbstractProblem, indexmap, objective, discipline_names, indexmap, subspace, number_shared_variables
+export AbstractProblem, indexmap, objective, discipline_names, indexmap, subspace, number_shared_variables, objective_lowerbound
 
 include("solve.jl")
 export solve, load_data, save_data, trim_data!, SolveOptions

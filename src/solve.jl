@@ -20,7 +20,7 @@ end
 Receives problem definition, solver type, options.
 """
 function solve(solver::AbstractSolver, options::SolveOptions; 
-        z0::Union{Nothing, <:AbstractArray}=nothing)
+        z0::Union{Nothing, <:AbstractArray}=nothing, terminal_print=true)
     (; n_ite, ini_samples, iteration_restart, warm_start_sampler, tol, savedir) = options
     
     problem     = solver.problem
@@ -28,12 +28,11 @@ function solve(solver::AbstractSolver, options::SolveOptions;
     Nz          = number_shared_variables(problem)
     idz         = indexmap(problem)
     to          = solver.to
-
+    
     # create xp directory, save options
     mkpath(savedir)
-    open("$savedir/msg.txt","w") do io
-        println(io,options)
-    end
+    io = terminal_print ? stdout : open("$savedir/msg.txt","w")
+    println(io,options)
     JLD2.save("$savedir/inputs.jld2", "options", options, "idz", idz)
 
     # Create sampler
@@ -85,9 +84,8 @@ function solve(solver::AbstractSolver, options::SolveOptions;
     end
 
     # Optimization
-    open("$savedir/msg.txt","a") do io
-        @printf io "%3s %9s %9s %9s %4s \n" "ite" "obj" "∑√J" "EIc" "Nfsb"
-    end
+    @printf io "%3s %9s %9s %9s %4s \n" "ite" "obj" "∑√J" "EIc" "Nfsb"
+    !terminal_print && flush(io)
     ite = iteration_restart+1
     idata = length(Z)
     mkpath("$savedir/solver")
@@ -118,19 +116,17 @@ function solve(solver::AbstractSolver, options::SolveOptions;
         fsb = map(D->D.fsb,data)
         sqJ = map(D->D.sqJ,data)
         save("$savedir/data.jld2","Z",Z,"obj",obj,"sqJ",sqJ,"fsb",fsb)
-        open("$savedir/msg.txt","a") do io
-            @printf io "%3i %.3e %.3e %.3e %2i \n" ite -z[1] sum(sqJ)[end] eic_max sum(fsb)[end]
-        end
+        @printf io "%3i %.3e %.3e %.3e %2i \n" ite o sum(sqJ)[end] eic_max sum(fsb)[end]
+        !terminal_print && flush(io)
         ite += 1
         end
     end
 
     # Print timer
     to_flatten = TimerOutputs.flatten(to)
-    open("$savedir/msg.txt","a") do io
-        show(io, to)
-        show(io, to_flatten)
-    end
+    show(io, to)
+    show(io, to_flatten)
+    !terminal_print && close(io)
 
     fsb = map(D->D.fsb,data)
     sqJ = map(D->D.sqJ,data)
@@ -167,4 +163,4 @@ function trim_data!(data, ite)
         map(v->v[keep],D)
     end
     map(trim, data)
-end
+end 

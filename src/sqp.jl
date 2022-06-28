@@ -76,7 +76,7 @@ function solve(solver::SQP, options::SolveOptions;
             @. df += 2*solver.λ*(Zd[d] - Zs[d])
 
             # Constraint calc
-            g[i] = dg[i,:] ⋅ dg[i,:]
+            g[i] = (dg[i,:] ⋅ dg[i,:]) / 4
 
             push!(data[d].sqJ, g[i])
             fsb = (g[i] < cotol)
@@ -98,7 +98,8 @@ function solve(solver::SQP, options::SolveOptions;
     xopt, fopt, info = SNOW.minimize(cofun, z0, Nd, lz, uz, lg, ug, options)
     
     sqJ = map(D->D.sqJ,data)
+    fsb = map(D->D.fsb,data)
     save("$savedir/obj.jld2","Z",Z,"obj",obj,"sqJ",sqJ,"glb",glb)
     map(d->save_data("$savedir/$d.jld2",data[d]), disciplines)
-    return data    
+    return obj, sqJ, fsb, Z
 end
