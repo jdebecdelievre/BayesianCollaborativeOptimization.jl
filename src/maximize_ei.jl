@@ -75,37 +75,42 @@ objective function, NamedTuple of ensembles, initial values
 function maximize_ei(solver::BCO, data::NamedTuple{disciplines}, ensembles::NamedTuple{disciplines}, savedir::String) where disciplines
     m   = length(data[disciplines[1]].Z)
     Nz  = number_shared_variables(solver.problem)
+    nd = length(disciplines)
     idz = indexmap(solver.problem)
     to  = solver.to
     
     ## Initial guesses and best point
     z = zeros(Nz)
-    EIc = zeros(m)
-    ite = zeros(Int64,m)
-    maxZ = [copy(z) for _=1:m]
-    iniZ = [copy(z) for _=1:m]
+    EIc = zeros(m*nd)
+    ite = zeros(Int64,m*nd)
+    maxZ = [copy(z) for _=1:m*nd]
+    iniZ = [copy(z) for _=1:m*nd]
     best = objective_lowerbound(solver.problem)
     nid = copy(z)
+    j = 1
     for i = 1:m
-        # Set z to average zstar from disciplines
+        # Compute average zstar from disciplines
         nid .= 0.
         z .= 0.
         for d=disciplines
             z[idz[d]]  .+= data[d].Zs[i]
             nid[idz[d]] .+= 1.
         end
-        @. iniZ[i] = z / nid
+        @. z = z / nid
+        
+        # Add one initial value per discipline
+        for d=disciplines
+            @. iniZ[j] = z
+            @. iniZ[j][idz[d]] = data[d].Zs[i]
+            j+=1
+        end
         
         # Find best point so far
-        gfs  = 1
-        nid .= 0.
-        z   .= 0.
+        gfs = 1
         for d=disciplines
-            z[idz[d]]  .+= data[d].Z[i]
-            nid[idz[d]] .+= 1.
+            z[idz[d]] .= data[d].Z[i]
             gfs *= data[d].fsb[i]
         end
-        z ./= nid
         obj = objective(solver.problem, z)
         if (gfs == 1) && (obj>best)
             best = obj
@@ -153,9 +158,9 @@ function maximize_ei(solver::BCO, data::NamedTuple{disciplines}, ensembles::Name
     end
     
     ## Run maximization of EIc for each initial guess
-    stepsize = ones(m) * solver.stepsize
-    msg = Vector{Symbol}(undef,m)
-    for i = 1:m
+    stepsize = ones(m*nd) * solver.stepsize
+    msg = Vector{Symbol}(undef,m*nd)
+    for i = 1:length(EIc)
         EIc[i], z, ite[i], msg[i] = maximize(copy(iniZ[i]),stepsize[i])
         if EIc[i] < 1e-4
             stepsize[i] *= 2

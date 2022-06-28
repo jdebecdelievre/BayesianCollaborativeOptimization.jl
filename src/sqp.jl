@@ -14,7 +14,7 @@ end
 
 
 function solve(solver::SQP, options::SolveOptions; 
-                z0::Union{Nothing, <:AbstractArray}=nothing)
+                z0::Union{Nothing, <:AbstractArray}=nothing, terminal_print=true)
     (; n_ite, ini_samples, iteration_restart, warm_start_sampler, tol, savedir) = options
     cotol = 1e-4
     ipoptions=Dict("print_level"=>2, "tol"=>1e-6, "max_iter"=>500)

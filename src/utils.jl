@@ -1,11 +1,19 @@
-function get_metrics(savedir::String, disciplines::Tuple, zopt::AbstractVector, objective)
+function get_metrics(mdl::AbstractProblem, savedir::String, zopt::AbstractVector)
+    disciplines = discipline_names(mdl)
     Nd = length(disciplines)
-    fopt = objective(zopt)
-
-    sqJ = NamedTuple{disciplines}(map(d->load("$savedir/$d.jld2", "sqJ"),disciplines))
-    obj = load("$savedir/data.jld2","obj")
+    fopt = objective_opt(mdl)
+    lb_opt = objective_lowerbound(mdl)
+    ub_opt = objective_upperbound(mdl)
     
-    metric = abs.(obj .- fopt) + sum(sqJ)
+    # Compute metrics
+    if isfile("$savedir/obj.jld2")
+        obj, sqJ = load("$savedir/obj.jld2","obj","sqJ")
+    else
+        obj, sqJ = load("$savedir/data.jld2","obj","sqJ")
+    end
+    metric = abs.(obj .- fopt) / (ub_opt - lb_opt) + sum(sqJ)
+
+    # Reorder
     for i=2:length(metric)
         metric[i] = min(metric[i],metric[i-1])
     end

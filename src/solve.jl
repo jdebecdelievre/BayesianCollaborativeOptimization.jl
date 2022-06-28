@@ -115,7 +115,7 @@ function solve(solver::AbstractSolver, options::SolveOptions;
         push!(obj,o)
         fsb = map(D->D.fsb,data)
         sqJ = map(D->D.sqJ,data)
-        save("$savedir/data.jld2","Z",Z,"obj",obj,"sqJ",sqJ,"fsb",fsb)
+        save("$savedir/obj.jld2","Z",Z,"obj",obj,"sqJ",sqJ,"fsb",fsb)
         @printf io "%3i %.3e %.3e %.3e %2i \n" ite o sum(sqJ)[end] eic_max sum(fsb)[end]
         !terminal_print && flush(io)
         ite += 1
@@ -145,9 +145,8 @@ function load_data(filename::String)
     )
 end
 
-function load_data(savedir::String, disciplines::Tuple{Symbol,Symbol})
-    return NamedTuple{disciplines}(map(d->load_data("$savedir/$d.jld2"), disciplines))
-end
+load_data(savedir::String, disciplines::Tuple{Symbol,Symbol}) = NamedTuple{disciplines}(map(d->load_data("$savedir/$d.jld2"), disciplines))
+load_data(savedir::String, pb::AbstractProblem) = NamedTuple{discipline_names(pb)}(map(d->load_data("$savedir/$d.jld2"), discipline_names(pb)))
 
 function save_data(filename, D)
     @assert (split(filename, ".")[end] == "jld2") "Filename extension must be jld2"

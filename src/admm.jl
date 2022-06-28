@@ -79,8 +79,8 @@ function get_new_point(ite::Int64, solver::ADMM,
 
     # Evaluate target for each discipline
     Zd = map((id,iy)->z̄s[id] - iy/ρ, idz, y)
-    z̄s - yobj / ρ
-
+    @. z̄s -= yobj / ρ
+    
     return z̄s, Zd, 0.
 end
 
