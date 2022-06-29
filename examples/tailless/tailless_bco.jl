@@ -28,27 +28,23 @@ addprocs(7, exeflags="--project=$(Base.active_project())")
     [0.4375, 0.3125, 0.1875, 0.9375, 0.5625],
     [0.8125, 0.4375, 0.5625, 0.0625, 0.4375],
     [0.3125, 0.9375, 0.0625, 0.5625, 0.9375]]
-    
+
     function run(i)
-        savedir = "$HOME/examples/tailless/xpu$i"
-        solver  = BCO(Tailless(),
-            ntrials=2, nparticles=8, nlayers=0, lr=0.01,
-            αlr=.95, N_epochs=500, logfreq=5000, nresample=0,
-            dropprob=0.02, stepsize=1.)
-        options = SolveOptions(
-            n_ite = 15, # number of iterations
-            ini_samples= 0, # number of initial random samples. 0 to use provided z0
-            savedir=savedir, warm_start_sampler=i-1, tol=1e-4,)
-
-        obj, sqJ, fsb, Z = solve(solver, options,z0=Z0[i])
-        metric = abs.(obj .- zopt[1]) + sum(sqJ)
+        solver = BCO(Tailless(), 
+            N_epochs=500_000, stepsize=10.,
+            dropprob= 0.02, 
+            αlr=0.97, 
+            nlayers=40, nparticles=6, ntrials=2)
+        options = SolveOptions(n_ite=15, ini_samples=1, warm_start_sampler=i, tol=1e-6, savedir="xpu$i")
+        obj, sqJ, fsb, Z = solve(solver, options, terminal_print=false,z0=Z0[i])
     end
-
 end
-##
+
 metrics = pmap(i->run(i),1:20)
 
-using JLD2
-HOME = pwd()
-savedir = "$HOME/examples/tailless"
-save("$savedir/metrics.jld2", "metrics", metrics)   
+
+
+# using JLD2
+# HOME = pwd()
+# savedir = "$HOME/examples/tailless"
+# save("$savedir/metrics.jld2", "metrics", metrics)   

@@ -435,7 +435,7 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
     zs[idz.R] = g[idg.R]
     
     viol = sum(max(0., lg[i]-g[i])+ max(0., g[i]-ug[i]) for i=1:Ng)
-    @assert (viol < 1e-6) "$viol"
+    # @assert (viol < 1e-6) "$viol"
     return zs
 end
 
@@ -564,7 +564,7 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z
     zs[idz.R]   = g[idg.R]
     
     viol = sum(max(0., lg[i]-g[i])+ max(0., g[i]-ug[i]) for i=1:Ng)
-    @assert (viol < 1e-6) "$viol"
+    # @assert (viol < 1e-6) "$viol"
     return zs
 end
 
