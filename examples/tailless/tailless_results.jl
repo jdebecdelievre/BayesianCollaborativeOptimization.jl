@@ -2,19 +2,104 @@ using Plots
 using JLD2
 using HouseholderNets
 using BayesianCollaborativeOptimization
-const BCO = BayesianCollaborativeOptimization
+using Statistics
 include("$(pwd())/examples/tailless/tailless.jl")
 
-using Statistics
+##
 
-disciplines = (:struc,:aero)
+T = Tailless()
+solver = SQP(T, λ=1.)
+options = SolveOptions(n_ite=25, ini_samples=1, warm_start_sampler=100)
+solve(solver, options)
+data = map(load_data, T);
 
-variables = (; 
-    struc = struc_global,
-    aero = aero_global)
-variables_all = mergevar(values(variables)...)
-idz = map(indexbyname, variables)
-idz_all = indexbyname(variables_all)
+##
+# z = [0.7541980150409331, 0.6648501320476052, 0.15959821759870685, 0.5888229293125663]
+z =  [0.753436520478803, 0.7195552862986361, 0.1511257439801058, 0.6374228055576816]
+variables = mergevar((; xcg=aero_global.xcg, D=aero_global.D), aero_local)
+idx = indexbyname(variables)
+idz = indexbyname(aero_global)
+idg = indexbyname(aero_output)
+k = upper(variables) - lower(variables) 
+b = lower(variables)
+
+# unscale z
+kz = upper(aero_global) - lower(aero_global) 
+bz = lower(aero_global)
+
+function fun(g, x)
+    g.= 0.
+    # unscale
+    x .*= k
+    x .+= b
+
+    # Aero
+    D, load_4g, Cl, Cm, Cm_4g, q, Cm_al, Cm_al_4g = aero(x[idx.alpha], x[idx.delta_e], x[idx.twist], x[idx.xcg])
+
+    g[idg.qpos] = -q/W 
+    @. g[idg.Cl] = (Cl / 1.45 - 1) / 1000
+    g[idg.Cm_al] = Cm_al
+    g[idg.Cm_al_4g] = Cm_al_4g 
+    g[idg.load_4g] = (2 * W - sum(load_4g))/2/W
+    g[idg.Cm] = Cm
+    g[idg.Cm_4g] = Cm_4g
+
+    # Compute Loads ROM
+    a1 = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
+    a3 = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
+    
+    # rescale
+    x .-= b
+    x ./= k
+
+    # objective function
+    g[idg.D]  =  (D-bz[idz.D]) / kz[idz.D] - x[idx.D]
+    g[idg.a1] = (a1-bz[idz.a1]) / kz[idz.a1]
+    g[idg.a3] = (a3-bz[idz.a3]) / kz[idz.a3]
+    f = ((x[idx.D]  - z[idz.D] )^2 + (g[idg.a1] - z[idz.a1] )^2+
+         (g[idg.a3] - z[idz.a3])^2 + (x[idx.xcg] - z[idz.xcg])^2)
+    return f
+end
+Ng = len(aero_output)
+Nx = len(variables)
+
+x0 = ini_scaled(variables)  # starting point
+x0[idx.xcg] = z[idz.xcg]
+x0[idx.D]   = z[idz.D]
+
+ipoptions = Dict{Any,Any}()
+ipoptions["tol"] = 1e-8
+ipoptions["max_iter"] = 150
+# ipoptions["linear_solver"] = "ma97"
+options = SNOW.Options(derivatives=ForwardAD(), solver=SNOPT())#IPOPT(ipoptions))
+
+gg = zeros(Ng)  # starting point
+lx = zeros(Nx) # lower bounds on x
+ux = ones(Nx) # upper bounds on x
+lg = lower(aero_output)
+ug = upper(aero_output) # upper bounds on g
+xopt, fopt, info = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
+
+# Compute z star
+zs          = copy(z)
+fun(gg, xopt)
+zs[idz.xcg] = xopt[idx.xcg]
+zs[idz.D]   = xopt[idx.D]
+zs[idz.a1]  = gg[idg.a1]
+zs[idz.a3]  = gg[idg.a3]
+
+viol = sum(max(0., lg[i]-gg[i])+ max(0., gg[i]-ug[i]) for i=1:Ng)
+@assert (viol < 1e-6) "$viol"
+##
+using FiniteDiff
+gd = zeros(len(idg))
+function gdt(gd,x)
+    gd = copy(gd)
+    fun(gd,x)
+    return gd
+end
+# dg = FiniteDiff.finite_difference_gradient(x->fun(gd,x), x0)
+dg = FiniteDiff.finite_difference_jacobian(x->gdt(gd,x), x0)
 
 ##
 nruns = 7

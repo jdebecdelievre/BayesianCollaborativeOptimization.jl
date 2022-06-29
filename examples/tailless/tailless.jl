@@ -131,7 +131,7 @@ end
     AIC_LU, TLmesh = prepare_aero()
 
     aero_local = (
-        twist   = Var(ini= ones(ny)*5., lb=-5,  ub=15),
+        twist   = Var(ini= ones(ny)*5., lb=-10,  ub=25),
         alpha   = Var(ini= 5, lb=0,   ub=15),
         delta_e = Var(ini=-5, lb=-25, ub=0)
     )
@@ -141,7 +141,7 @@ end
         Cm_al    = Var(lb=-Inf, ub=0.),
         Cm_al_4g = Var(lb=-Inf, ub=0.),
         load_4g  = Var(lb=-Inf, ub=0.),
-        D        = Var(lb=0., ub=1.),
+        D        = Var(lb=-Inf, ub=0.),
         Cm       = Var(lb=0., ub=0.),
         Cm_4g    = Var(lb=0., ub=0.),
         a1       = Var(lb=0., ub=1.),
@@ -217,8 +217,8 @@ end
         sigma = Var(lb=-Inf, ub=0., N=ny),
         Wfuel = Var(lb=-Inf, ub=0. ),
         Wwing = Var(lb=-Inf, ub=0. ),
-        xcg = Var(lb=0., ub=0.),
-        R = Var(lb=0., ub=1.),
+        R     = Var(lb=-Inf, ub=0.),
+        xcg   = Var(lb=0., ub=1.),
     )
 end
 
@@ -268,7 +268,7 @@ end
 function solve_aao()
     @assert keys(global_variables)[1] == :R
 
-    variables   = mergevar((; xcg=global_variables.xcg), aero_local, struc_local)
+    variables   = mergevar((; xcg=global_variables.xcg, R=global_variables.R), aero_local, struc_local)
     constraints = mergevar(aero_output, struc_output)
     idx         = indexbyname(variables)
     idg         = indexbyname(constraints)
@@ -286,24 +286,20 @@ function solve_aao()
         @. g[idg.Cl] = Cl / 1.45 - 1
         g[idg.Cm_al] = Cm_al
         g[idg.Cm_al_4g] = Cm_al_4g
-        g[idg.D] = (D-variables.D.lb[1]) / (variables.D.ub[1]-variables.D.lb[1])
         g[idg.load_4g] = (2 * W - sum(load_4g))/2/W
         g[idg.Cm] = Cm
         g[idg.Cm_4g] = Cm_4g
 
         a1 = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
         a3 = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
-        g[idg.a1] = (a1 - variables.a1.lb[1]) / (variables.a1.ub[1]-variables.a1.lb[1])
-        g[idg.a3] = (a3 - variables.a3.lb[1]) / (variables.a3.ub[1]-variables.a3.lb[1])
         
         # Struct
         load = 4 * W / half_span * (a1.*sin.(TLmesh.theta_c) + a3.*sin.(3*TLmesh.theta_c))
         xcg, sigma, Wfuel, Wwing = structures(x[idx.thickness], x[idx.Wt], load)
         @. g[idg.sigma] = abs(sigma) / sigma_failure - 1.
-        g[idg.xcgcalc] = (x[idx.xcg] - xcg)
+        g[idg.xcg] = (x[idx.xcg] - xcg)
         g[idg.Wfuel] = Wfuel / W - 1.
         g[idg.Wwing] = Wwing / W - 1.
-        g[idg.R] = (R - variables.R.lb[1]) / (variables.R.ub[1]-variables.R.lb[1])
         
         # Performance
         R = performance(D, Wfuel)
@@ -325,6 +321,7 @@ function solve_aao()
     ux = ones(Nx) # upper bounds on x
     lg = lower(constraints)
     ug = upper(constraints) # upper bounds on g
+    ug[idg.xcg] = 0.
     options = SNOW.Options(derivatives=SNOW.CentralFD())
 
     xopt, fopt, info = minimize(aao, x0, Ng, lx, ux, lg, ug, options)
@@ -365,142 +362,95 @@ struct Tailless <: AbstractProblem end
 BayesianCollaborativeOptimization.discipline_names(::Tailless) = (:struc, :aero)
 BayesianCollaborativeOptimization.indexmap(::Tailless) = tailless_idz
 BayesianCollaborativeOptimization.number_shared_variables(::Tailless) = 5
+BayesianCollaborativeOptimization.objective_opt(::Tailless) = Zopt.R
 
 function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z::AbstractArray, filename::String, 
     ipoptions::Dict{Any,Any} = Dict{Any,Any}("print_level"=>2, "file_print_level"=>5, "tol"=>1e-8, "output_file"=>"tmp.txt","linear_solver"=>"mumps"))
     """
     z is a NamedTuple of global variables
     """
-    variables = mergevar((; a1=struc_global.a1, a3=struc_global.a3, D=struc_global.D), struc_local)
+    variables = mergevar((; xcg=aero_global.xcg, D=aero_global.D), aero_local)
     idx = indexbyname(variables)
-    idz = indexbyname(global_variables)
-    idg = indexbyname(struc_output)
+    idz = indexbyname(aero_global)
+    idg = indexbyname(aero_output)
     k = upper(variables) - lower(variables) 
     b = lower(variables)
 
-    kz = upper(global_variables) - lower(global_variables) 
-    bz = lower(global_variables)
-    
+    # unscale z
+    kz = upper(aero_global) - lower(aero_global) 
+    bz = lower(aero_global)
+
     function fun(g, x)
+        g.= 0.
         # unscale
         x .*= k
         x .+= b
 
-        # Struct
-        load = 4 * W / half_span * (x[idx.a1].*sin.(TLmesh.theta_c) + x[idx.a3].*sin.(3*TLmesh.theta_c))
-        xcg, sigma, Wfuel, Wwing = structures(x[idx.thickness], x[idx.Wt], load)
-        @. g[idg.sigma] = abs(sigma) / sigma_failure - 1.
-        g[idg.Wfuel] = Wfuel / W - 1.
-        g[idg.Wwing] = Wwing / W - 1.
-        
-        # Performance
-        R = performance(x[idx.D], Wfuel)
+        # Aero
+        D, load_4g, Cl, Cm, Cm_4g, q, Cm_al, Cm_al_4g = aero(x[idx.alpha], x[idx.delta_e], x[idx.twist], x[idx.xcg])
 
+        g[idg.qpos] = -q/W
+        @. g[idg.Cl] = (Cl / 1.45 - 1) / 1000.
+        g[idg.Cm_al] = Cm_al
+        g[idg.Cm_al_4g] = Cm_al_4g
+        g[idg.load_4g] = (2 * W - sum(load_4g))/2/W
+        g[idg.Cm] = Cm
+        g[idg.Cm_4g] = Cm_4g
+
+        # Compute Loads ROM
+        a1 = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
+        a3 = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
+        
         # rescale
         x .-= b
         x ./= k
-        g[idg.xcg] = (xcg-bz[idz.xcg]) / kz[idz.xcg]
-        g[idg.R] = (R-bz[idz.R]) / kz[idz.R]
 
-        return ((x[idx.D] - z[idz.D])^2 + (x[idx.a1] - z[idz.a1])^2+
-        (x[idx.a3] - z[idz.a3])^2+(g[idg.xcg] - z[idz.xcg])^2+(g[idg.R] - z[idz.R])^2)
+        # objective function
+        g[idg.D]  =  (D-bz[idz.D]) / kz[idz.D] - x[idx.D]
+        g[idg.a1] = (a1-bz[idz.a1]) / kz[idz.a1]
+        g[idg.a3] = (a3-bz[idz.a3]) / kz[idz.a3]
+        f = ((x[idx.D]  - z[idz.D] )^2 + (g[idg.a1] - z[idz.a1] )^2+
+             (g[idg.a3] - z[idz.a3])^2 + (x[idx.xcg] - z[idz.xcg])^2)
+        return f
     end
-    Ng = len(struc_output)
+    Ng = len(aero_output)
     Nx = len(variables)
 
     x0 = ini_scaled(variables)  # starting point
-    x0[idx.D]  = z[idz.D]
-    x0[idx.a1] = z[idz.a1]
-    x0[idx.a3] = z[idz.a3]
+    x0[idx.xcg] = z[idz.xcg]
+    x0[idx.D]   = z[idz.D]
     
     ipoptions["tol"] = 1e-8
-    ipoptions["max_iter"] = 500
+    ipoptions["max_iter"] = 150
     ipoptions["output_file"] = filename
-    options = SNOW.Options(derivatives=ForwardAD(), solver=IPOPT(ipoptions))
+    # ipoptions["linear_solver"] = "ma97"
+    options = SNOW.Options(derivatives=ForwardAD(), solver=SNOPT())#IPOPT(ipoptions))
+    
+    g = zeros(Ng)  # starting point
     lx = zeros(Nx) # lower bounds on x
     ux = ones(Nx) # upper bounds on x
-    lg = lower(struc_output)
-    ug = upper(struc_output) # upper bounds on g
-    xopt, fopt, info, out = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
-
-    # pack zs
-    g = zeros(Ng) 
+    lg = lower(aero_output)
+    ug = upper(aero_output) # upper bounds on g
+    xopt, fopt, info = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
+    
+    # Compute z star
+    zs          = copy(z)
     fun(g, xopt)
-
-    zs = copy(z)
-    zs[idz.D] = xopt[idx.D]
-    zs[idz.a1] = xopt[idx.a1]
-    zs[idz.a3] = xopt[idx.a3]
-    zs[idz.xcg] = g[idg.xcg]
-    zs[idz.R] = g[idg.R]
+    zs[idz.xcg] = xopt[idx.xcg]
+    zs[idz.D]   = xopt[idx.D]
+    zs[idz.a1]  = g[idg.a1]
+    zs[idz.a3]  = g[idg.a3]
     
     viol = sum(max(0., lg[i]-g[i])+ max(0., g[i]-ug[i]) for i=1:Ng)
+    @show z
     @assert (viol < 1e-6) "$viol"
     return zs
 end
 
 function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z::AbstractArray, filename::String,
-    ipoptions::Dict{Any,Any} = Dict{Any,Any}("print_level"=>5, "file_print_level"=>5, "tol"=>1e-8, "output_file"=>"tmp.txt","linear_solver"=>"mumps"))
+    ipoptions::Dict{Any,Any} = Dict{Any,Any}("print_level"=>2, "file_print_level"=>5, "tol"=>1e-8, "output_file"=>"tmp.txt","linear_solver"=>"mumps"))
 
-    # # z = map(v->(v.ini-v.lb)./(v.ub-v.lb), global_variables)
-    # variables = mergevar(global_variables, struc_local)
-    # idx = indexbyname(variables)
-    # idz = indexbyname(global_variables)
-    # idg = indexbyname(struc_output)
-    # k = upper(variables) - lower(variables) 
-    # b = lower(variables)
-    
-    # function fun(g, x)
-    #     # unscale
-    #     x .*= k
-    #     x .+= b
-
-    #     # Struct
-    #     load = 4 * W / half_span * (x[idx.a1].*sin.(TLmesh.theta_c) + x[idx.a3].*sin.(3*TLmesh.theta_c))
-    #     xcg, sigma, Wfuel, Wwing = structures(x[idx.thickness], x[idx.Wt], load)
-    #     @. g[idg.sigma] = abs(sigma) / sigma_failure - 1.
-    #     g[idg.xcgcalc] = (x[idx.xcg] - xcg)
-    #     g[idg.Wfuel] = Wfuel / W - 1.
-    #     g[idg.Wwing] = Wwing / W - 1.
-        
-    #     # Performance
-    #     R = performance(x[idx.D], Wfuel)
-    #     g[idg.Rcalc] = (x[idx.R] - R) / 5000
-
-    #     # rescale
-    #     x .-= b
-    #     x ./= k
-
-    #     return sum(sum((x[ix]-z[iz])^2 for (ix,iz)=zip(idx[k],idz[k])) for k=keys(idz))
-    # end
-    # Ng = len(struc_output)
-    # Nx = len(variables)
-
-    # x0 = ini_scaled(variables)  # starting point
-    # for k=keys(idz)
-    #     for (ix,iz)=zip(idx[k],idz[k]) 
-    #         x0[ix] = z[iz]
-    #     end
-    # end
-    # g = zeros(Ng)  # starting point
-
-    # ipoptions["tol"] = 1e-8
-    # ipoptions["max_iter"] = 500
-    # ipoptions["output_file"] = "$savedir"
-    # options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=IPOPT(ipoptions))
-    # lx = zeros(Nx) # lower bounds on x
-    # ux = ones(Nx) # upper bounds on x
-    # lg = lower(struc_output)
-    # ug = upper(struc_output) # upper bounds on g
-    # xopt, fopt, info, out = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
-    
-    # zs = copy(z)
-    # for k=keys(idz)
-    #     zs[idz[k]] = xopt[idx[k]]
-    # end
-    # return zs
-    # z = map(v->(v.ini-v.lb)./(v.ub-v.lb), global_variables)
-    variables = mergevar((; a1=struc_global.a1, a3=struc_global.a3, D=struc_global.D), struc_local)
+    variables = mergevar((; a1=struc_global.a1, a3=struc_global.a3, D=struc_global.D, R=struc_global.R), struc_local)
     idx = indexbyname(variables)
     idz = indexbyname(global_variables)
     idg = indexbyname(struc_output)
@@ -529,10 +479,10 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z
         x .-= b
         x ./= k
         g[idg.xcg] = (xcg-bz[idz.xcg]) / kz[idz.xcg]
-        g[idg.R] = (R-bz[idz.R]) / kz[idz.R]
+        g[idg.R] = (R-bz[idz.R]) / kz[idz.R] - x[idx.R]
 
         return ((x[idx.D] - z[idz.D])^2 + (x[idx.a1] - z[idz.a1])^2+
-        (x[idx.a3] - z[idz.a3])^2+(g[idg.xcg] - z[idz.xcg])^2+(g[idg.R] - z[idz.R])^2)
+                (x[idx.a3] - z[idz.a3])^2+(g[idg.xcg] - z[idz.xcg])^2+(x[idx.R] - z[idz.R])^2)
     end
     Ng = len(struc_output)
     Nx = len(variables)
@@ -541,6 +491,7 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z
     x0[idx.D]  = z[idz.D]
     x0[idx.a1] = z[idz.a1]
     x0[idx.a3] = z[idz.a3]
+    x0[idx.R]  = z[idz.R]
     
     ipoptions["tol"] = 1e-8
     ipoptions["max_iter"] = 500
@@ -560,8 +511,8 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z
     zs[idz.D]   = xopt[idx.D]
     zs[idz.a1]  = xopt[idx.a1]
     zs[idz.a3]  = xopt[idx.a3]
+    zs[idz.R]   = xopt[idx.R]
     zs[idz.xcg] = g[idg.xcg]
-    zs[idz.R]   = g[idg.R]
     
     viol = sum(max(0., lg[i]-g[i])+ max(0., g[i]-ug[i]) for i=1:Ng)
     @assert (viol < 1e-6) "$viol"
