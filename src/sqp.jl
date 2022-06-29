@@ -50,6 +50,7 @@ function solve(solver::SQP, options::SolveOptions;
     Zd = map(id->z0[id], idz)
     Zs = map(id->z0[id], idz)
     ite = 1
+    mkpath("$savedir/eval/")
 
     function cofun(g, df, dg, z)
         push!(Z, copy(z))
@@ -68,12 +69,12 @@ function solve(solver::SQP, options::SolveOptions;
             push!(data[d].Z, copy(Zd[d]))
             
             # Subspace projection
-            Zs[d] .= subspace(solver.problem, Val(d), Zd[d], "")
+            Zs[d] .= subspace(solver.problem, Val(d), Zd[d], "$savedir/eval/$(d)_$ite.txt")
             push!(data[d].Zs, copy(Zs[d]))
             
             # Gradient calc
             @. dg[i, idz[d]] = 2*(Zd[d] - Zs[d])
-            @. df += 2*solver.λ*(Zd[d] - Zs[d])
+            @. df[idz[d]] += 2*solver.λ*(Zd[d] - Zs[d])
 
             # Constraint calc
             g[i] = (dg[i,:] ⋅ dg[i,:]) / 4
