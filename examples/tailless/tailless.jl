@@ -129,6 +129,10 @@ function prepare_aero()
 end
 @consts begin
     AIC_LU, TLmesh = prepare_aero()
+    sinθ_dθ  = sin.(  TLmesh.theta_c) .*  TLmesh.theta_panel_size
+    sin3θ_dθ = sin.(3*TLmesh.theta_c) .*  TLmesh.theta_panel_size
+    sinθ  = sin.(  TLmesh.theta_c)
+    sin3θ = sin.(3*TLmesh.theta_c)
 
     aero_local = (
         twist   = Var(ini= ones(ny)*5., lb=-10,  ub=25),
@@ -173,7 +177,7 @@ function aero(alpha, delta_e, twist, xcg)
     q = W / (L + 1e-10)
 
     # Local Cl
-    Cl = 2 .* Sig_4g ./ TLmesh.chord_c
+    Cl = 2 * (Sig_4g ./ TLmesh.chord_c)
     
     # Loads
     load_4g = 2 .* Sig_4g .* ( 2 * q ) .* pnl # force in lb
@@ -202,7 +206,6 @@ function aero(alpha, delta_e, twist, xcg)
     # @. RHS = -cos(twist)
     # dSig_dal = AIC_LU \ RHS
     # Cm_al_4g = - 2 * (2 * dSig_dal ⋅ ΔX) * pnl / S / c_ref
-
 
     return D, load_4g, Cl, Cm, Cm_4g, q, Cm_al, Cm_al_4g
 end
@@ -365,7 +368,7 @@ BayesianCollaborativeOptimization.number_shared_variables(::Tailless) = 5
 BayesianCollaborativeOptimization.objective_opt(::Tailless) = Zopt.R
 
 function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z::AbstractArray, filename::String, 
-    ipoptions::Dict{Any,Any} = Dict{Any,Any}("print_level"=>2, "file_print_level"=>5, "tol"=>1e-8, "output_file"=>"tmp.txt","linear_solver"=>"mumps"))
+    ipoptions::Dict{Any,Any} = Dict{Any,Any}("print_level"=>2, "file_print_level"=>5, "tol"=>1e-8, "output_file"=>"tmp.txt","linear_solver"=>"ma97"))
     """
     z is a NamedTuple of global variables
     """
@@ -390,7 +393,7 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
         D, load_4g, Cl, Cm, Cm_4g, q, Cm_al, Cm_al_4g = aero(x[idx.alpha], x[idx.delta_e], x[idx.twist], x[idx.xcg])
 
         g[idg.qpos] = -q/W
-        @. g[idg.Cl] = (Cl / 1.45 - 1) / 1000.
+        @. g[idg.Cl] = (Cl / 1.45 - 1)
         g[idg.Cm_al] = Cm_al
         g[idg.Cm_al_4g] = Cm_al_4g
         g[idg.load_4g] = (2 * W - sum(load_4g))/2/W
@@ -398,8 +401,8 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
         g[idg.Cm_4g] = Cm_4g
 
         # Compute Loads ROM
-        a1 = half_span / (pi * W) * ((load_4g .* sin.(  TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
-        a3 = half_span / (pi * W) * ((load_4g .* sin.(3*TLmesh.theta_c)) ⋅ TLmesh.theta_panel_size)
+        a1 = half_span / (pi * W) * (load_4g ⋅ sinθ_dθ)
+        a3 = half_span / (pi * W) * (load_4g ⋅ sin3θ_dθ)
         
         # rescale
         x .-= b
@@ -410,7 +413,7 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
         g[idg.a1] = (a1-bz[idz.a1]) / kz[idz.a1]
         g[idg.a3] = (a3-bz[idz.a3]) / kz[idz.a3]
         f = ((x[idx.D]  - z[idz.D] )^2 + (g[idg.a1] - z[idz.a1] )^2+
-             (g[idg.a3] - z[idz.a3])^2 + (x[idx.xcg] - z[idz.xcg])^2)
+             (g[idg.a3] - z[idz.a3])^2 + (x[idx.xcg] - z[idz.xcg])^2) + max(0,g[idg.D])*1000
         return f
     end
     Ng = len(aero_output)
@@ -424,7 +427,7 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
     ipoptions["max_iter"] = 150
     ipoptions["output_file"] = filename
     # ipoptions["linear_solver"] = "ma97"
-    options = SNOW.Options(derivatives=ForwardAD(), solver=SNOPT())#IPOPT(ipoptions))
+    options = SNOW.Options(derivatives=ForwardAD(), solver=IPOPT(ipoptions))
     
     g = zeros(Ng)  # starting point
     lx = zeros(Nx) # lower bounds on x
@@ -443,11 +446,14 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
     
     viol = sum(max(0., lg[i]-g[i])+ max(0., g[i]-ug[i]) for i=1:Ng)
     # @assert (viol < 1e-6) "$viol"
+    if viol > 1e-6 
+        println("constraint violation $filename: $viol")
+    end
     return zs
 end
 
 function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z::AbstractArray, filename::String,
-    ipoptions::Dict{Any,Any} = Dict{Any,Any}("print_level"=>2, "file_print_level"=>5, "tol"=>1e-8, "output_file"=>"tmp.txt","linear_solver"=>"mumps"))
+    ipoptions::Dict{Any,Any} = Dict{Any,Any}("print_level"=>2, "file_print_level"=>5, "tol"=>1e-8, "output_file"=>"tmp.txt","linear_solver"=>"ma97"))
 
     variables = mergevar((; a1=struc_global.a1, a3=struc_global.a3, D=struc_global.D, R=struc_global.R), struc_local)
     idx = indexbyname(variables)
@@ -465,7 +471,7 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z
         x .+= b
 
         # Struct
-        load = 4 * W / half_span * (x[idx.a1].*sin.(TLmesh.theta_c) + x[idx.a3].*sin.(3*TLmesh.theta_c))
+        load = 4 * W / half_span * (x[idx.a1] .* sinθ + x[idx.a3] .* sin3θ)
         xcg, sigma, Wfuel, Wwing = structures(x[idx.thickness], x[idx.Wt], load)
         @. g[idg.sigma] = abs(sigma) / sigma_failure - 1.
         g[idg.Wfuel] = Wfuel / W - 1.
@@ -478,7 +484,7 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z
         x .-= b
         x ./= k
         g[idg.xcg] = (xcg-bz[idz.xcg]) / kz[idz.xcg]
-        g[idg.R] = (R-bz[idz.R]) / kz[idz.R] - x[idx.R]
+        g[idg.R] = x[idx.R] - (R-bz[idz.R]) / kz[idz.R]
 
         return ((x[idx.D] - z[idz.D])^2 + (x[idx.a1] - z[idz.a1])^2+
                 (x[idx.a3] - z[idz.a3])^2+(g[idg.xcg] - z[idz.xcg])^2+(x[idx.R] - z[idz.R])^2)
@@ -516,49 +522,4 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z
     viol = sum(max(0., lg[i]-g[i])+ max(0., g[i]-ug[i]) for i=1:Ng)
     # @assert (viol < 1e-6) "$viol"
     return zs
-end
-
-function solve_co()
-    cotol = 1e-4
-    ipoptions=Dict("print_level"=>2, "tol"=>1e-6, "max_iter"=>500)
-    idz = indexbyname(global_variables)
-    prob = Tailless()
-    aero = Val(:aero)
-    struc = Val(:struc)
-
-    function cofun(g, df, dg, z)
-        # Constraints
-        zStar_aero = subspace(prob, aero, z,ipoptions)
-        @. dg[1,:] = z-zStar_aero
-        zStar_struc = subspace(prob, struc, z,ipoptions)
-        @. dg[2,:] = z-zStar_struc
-        g[1] = (dg[1,:] ⋅ dg[1,:])/2
-        g[2] = (dg[2,:] ⋅ dg[2,:])/2
-
-        # Objective
-        df .= 0
-        df[idz.R] = -1.
-        return -z[idz.R]
-    end
-
-    Ng = 2
-    Nz = len(global_variables)
-    z0 = ini_scaled(global_variables)  # starting point
-    lz = zeros(Nz) # lower bounds on z
-    uz = ones(Nz) # upper bounds on z
-    lg = [-Inf, -Inf]
-    ug = [cotol, cotol] # upper bounds on g
-    g = zeros(Ng)  # starting point
-
-    co_options = Dict("tol"=>1e-4, "max_iter"=>50)
-    options = SNOW.Options(derivatives=SNOW.UserDeriv(), solver=IPOPT(co_options))
-    xopt, fopt, info = minimize(cofun, z0, Ng, lz, uz, lg, ug, options)
-
-    # print result
-    v = (upper(global_variables) - lower(global_variables)) .* xopt + lower(global_variables)
-    v = unpack(v, idz)
-    for k = keys(v)
-        println("$k: $(v[k])")
-    end
-    return xopt
 end
