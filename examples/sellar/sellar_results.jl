@@ -5,62 +5,63 @@ using JLD2
 using Plots
 HOME = pwd()
 include("$HOME/examples/sellar/sellar.jl")
-
-##
 sl = Sellar()
 disciplines = discipline_names(sl)
 
-M = map(i->get_metrics(sl, "xpu$i", zopt),1:20)
-metric = first.(M)
-obj = getindex.(M, [2])
-sqJ = last.(M)
-plot(metric, yaxis=:log10)
-
 ##
-solver = ADMM(Sellar(), ρ=.1)
-for i=1:20
-    options = SolveOptions(n_ite=25, ini_samples=1, warm_start_sampler=i, tol=1e-6, savedir="xpu$i")
-    obj, sqJ, fsb, Z = solve(solver, options, terminal_print=false)
+nruns = 20
+pad = true
+method = ["sqp1", "sqp", "sqp100","bco","bco30"]#["admm","bco","sqp"]
+metric = Dict{Any,Any}()
+obj = Dict{Any,Any}()
+dobj = Dict{Any,Any}()
+sqJ = Dict{Any,Any}()
+for m=method
+    #
+    M = map(i->get_metrics(sl, "$HOME/examples/sellar/xp_jun30/$m/xpu$i"),1:nruns)
+    metric[m] = first.(M)
+    sqJ[m] = last.(M)
+    obj[m] = getindex.(M,[2])
+    dobj[m] = getindex.(M,[3])
+
+    #
+    if pad
+        l         = maximum(length, metric[m])
+        metric[m] = [[s;ones(l-length(s))*s[end]] for s=metric[m]]
+        obj[m]    = [[s;ones(l-length(s))*s[end]] for s=obj[m]]
+        dobj[m]   = [[s;ones(l-length(s))*s[end]] for s=dobj[m]]
+        sqJ[m]    = [map(s->[s; ones(l-length(s))*s[end]],ss) for ss=sqJ[m]]
+    end
 end
 
 ##
-solver = SQP(Sellar())
-for i=1:20
-    options = SolveOptions(n_ite=35, ini_samples=1, warm_start_sampler=i, tol=1e-6, savedir="xpu$i")
-    obj, sqJ, fsb, Z = solve(solver, options, terminal_print=false)
-end
-
-##
-methods = ["bco", "admm", "sqp"]
 p = plot(yaxis=:log10)
-for tl = methods
-    @show tl
-    
-    # Compute metrics
-    M = map(i->get_metrics(sl, "examples/sellar/xp_jun28/$tl/xpu$i", zopt),1:20)
-    metric = first.(M)
-    
-    # Pad
-    l = maximum(length, metric)
-    @show l
-    for i=1:20
-        metric[i] = [metric[i]; ones(l-length(metric[i]))*metric[i][end]]
-    end
-
-    plot!(p,mean(metric),label=tl)
+for m=method
+    l = min(30,minimum(length, metric[m]))
+    plot!(p,mean([m_[1:l] for m_=metric[m]]), yaxis=:log10,label=m)
 end
-
+xlabel!("Number of Subspace Evaluations")
+ylabel!("Metric")
+title!("Average Metric For 20 Random Initial Guesses")
+# savefig("$HOME/examples/sellar/xp_jun30/comparative_plot_june28_sellar.pdf")
 
 ##
-methods = ["bco", "admm"]
-for tl = methods
-    for i=1:20
-    fld = "examples/sellar/xp_jun28/$tl/xpu$i"
-    data = load_data(fld, sl)
-    Z = data.d1.Z
-    fsb = map(d->d.fsb,data)
-    sqJ = map(d->d.sqJ,data)
-    obj = load("$fld/obj.jld2","obj")["obj"]
-    @save "$fld/obj.jld2" Z obj sqJ fsb
-    end
+p = plot(yaxis=:log10)
+for m=method
+    l = min(30,minimum(length, dobj[m]))
+    plot!(p,mean([abs.(m_[1:l]) for m_=dobj[m]]),label=m)
 end
+xlabel!("Number of Subspace Evaluations")
+ylabel!("Objective")
+title!("Average obj For 20 Random Initial Guesses")
+# savefig("$HOME/examples/sellar/xp_jun30/comparative_plot_june28_sellar.pdf")
+##
+p = plot(yaxis=:log10)
+l=30
+for m=method
+    l = min(30,minimum(d->length(sum(d)), sqJ[m]))
+    plot!(p,mean([sum(m_)[1:l] for m_=sqJ[m]]),label=m)
+end
+xlabel!("Number of Subspace Evaluations")
+ylabel!("√J₁+√J₂")
+title!("Average Infeasibility For 20 Random Initial Guesses")

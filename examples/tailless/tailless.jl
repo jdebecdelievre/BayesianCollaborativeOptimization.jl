@@ -357,7 +357,7 @@ end
         thickness = [0.003952060271571667, 0.0035224933357481144, 0.0031001273620913563, 0.0026882960282519535, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665], 
         Wt = 55.74934541169471)
     Zopt = NamedTuple(Pair(k,(tailless_optimum[k].-global_variables[k].lb)./(global_variables[k].ub-global_variables[k].lb)) for k=keys(global_variables))
-    zopt = vcat(Zopt...)
+    zopt = [vcat(Zopt...)] # list of local optima
 end
 
 #### ---- Collaborative Optimization ----
@@ -365,7 +365,7 @@ struct Tailless <: AbstractProblem end
 BayesianCollaborativeOptimization.discipline_names(::Tailless) = (:struc, :aero)
 BayesianCollaborativeOptimization.indexmap(::Tailless) = tailless_idz
 BayesianCollaborativeOptimization.number_shared_variables(::Tailless) = 5
-BayesianCollaborativeOptimization.objective_opt(::Tailless) = Zopt.R
+BayesianCollaborativeOptimization.objective_opt(::Tailless) = [Zopt.R]
 
 function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z::AbstractArray, filename::String, 
     ipoptions::Dict{Any,Any} = Dict{Any,Any}("print_level"=>2, "file_print_level"=>5, "tol"=>1e-8, "output_file"=>"tmp.txt","linear_solver"=>"ma97"))

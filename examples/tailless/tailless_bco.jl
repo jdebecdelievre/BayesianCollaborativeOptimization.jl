@@ -3,9 +3,11 @@ using Pkg
 Pkg.activate("/home/adgboost/.julia/dev/BayesianCollaborativeOptimization/")
 addprocs(7, exeflags="--project=$(Base.active_project())")
 
+
 @everywhere begin
     using BayesianCollaborativeOptimization
     HOME = pwd()
+    prefix = "$HOME/examples/tailless/xp_jun30/bco22"
     include("$HOME/examples/tailless/tailless.jl")
 
     Z0 =  [[0.65625, 0.46875, 0.09375, 0.46875, 0.28125],
@@ -37,7 +39,9 @@ addprocs(7, exeflags="--project=$(Base.active_project())")
             nlayers=40, nparticles=6, ntrials=2)
         # solver = SQP(Tailless())
         # solver = ADMM(Tailless())
-        options = SolveOptions(n_ite=15, ini_samples=1, warm_start_sampler=i, tol=1e-4, savedir="xpu$i")
+        options = SolveOptions(n_ite=30, ini_samples=1, 
+                                warm_start_sampler=i, tol=1e-4, 
+                                savedir="$prefix/xpu$i", iteration_restart=15)
         obj, sqJ, fsb, Z = solve(solver, options, terminal_print=false,z0=Z0[i])
     end
 end

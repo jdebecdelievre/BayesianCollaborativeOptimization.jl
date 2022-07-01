@@ -1,4 +1,4 @@
-function get_metrics(mdl::AbstractProblem, savedir::String, zopt::AbstractVector)
+function get_metrics(mdl::AbstractProblem, savedir::String)
     disciplines = discipline_names(mdl)
     Nd = length(disciplines)
     fopt = objective_opt(mdl)
@@ -11,13 +11,23 @@ function get_metrics(mdl::AbstractProblem, savedir::String, zopt::AbstractVector
     else
         obj, sqJ = load("$savedir/data.jld2","obj","sqJ")
     end
-    metric = abs.(obj .- fopt) / (ub_opt - lb_opt) + sum(sqJ)
+    metric = [abs.(obj .- f) / (ub_opt - lb_opt) + sum(sqJ) for f=fopt]
+    i = [argmin([m[k] for m=metric]) for k=1:length(obj)]
+    metric = [metric[i[k]][k] for k=1:length(obj)]
 
     # Reorder
     for i=2:length(metric)
-        metric[i] = min(metric[i],metric[i-1])
+        # metric[i] = min(metric[i],metric[i-1])
+        if metric[i] > metric[i-1]
+            metric[i] = metric[i-1]
+            obj[i] = obj[i-1]
+            for j=1:Nd
+                sqJ[j][i] = sqJ[j][i-1]
+            end
+        end
     end
-    return metric, obj, sqJ
+
+    return metric, obj, obj .- fopt[i], sqJ
 end
 
 function datacheck(data::NamedTuple)

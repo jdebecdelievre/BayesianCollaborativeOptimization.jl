@@ -12,7 +12,7 @@ function objective(::AbstractProblem, z::AbstractArray, grad=nothing)
 end
 objective_lowerbound(::AbstractProblem) = 0.
 objective_upperbound(::AbstractProblem) = 1.
-objective_opt(::AbstractProblem) = 1.
+objective_opt(::AbstractProblem) = [1.]
 
 """
 Methods that must be overridden by each concrete subtype

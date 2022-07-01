@@ -12,7 +12,6 @@ Options structure for solution process
     ini_samples::Int64 = 2 # number of initial random samples. 0 to use provided z0
     iteration_restart::Int64 = 0 # Iteration Number at which to restart.
     warm_start_sampler::Int64 = 0
-    tol::Float64 = 5e-3
     savedir::String = "xpu"
 end
 
@@ -21,13 +20,14 @@ Receives problem definition, solver type, options.
 """
 function solve(solver::AbstractSolver, options::SolveOptions; 
         z0::Union{Nothing, <:AbstractArray}=nothing, terminal_print=true)
-    (; n_ite, ini_samples, iteration_restart, warm_start_sampler, tol, savedir) = options
+    (; n_ite, ini_samples, iteration_restart, warm_start_sampler, savedir) = options
     
     problem     = solver.problem
     disciplines = discipline_names(problem)
     Nz          = number_shared_variables(problem)
     idz         = indexmap(problem)
     to          = solver.to
+    tol         = solver.tol
     
     # create xp directory, save options
     mkpath(savedir)
@@ -78,9 +78,12 @@ function solve(solver::AbstractSolver, options::SolveOptions;
             save_data("$savedir/$d.jld2",D)
         end
     else
-        # Load data
+        # Load discipline data
         data = NamedTuple{disciplines}(map(d->load_data("$savedir/$d.jld2"), disciplines))
         trim_data!(data, iteration_restart)
+
+        # Load objective data
+        Z, obj, sqJ, fsb = load("$savedir/obj.jld2","Z","obj","sqJ","fsb")
     end
 
     # Optimization

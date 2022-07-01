@@ -26,8 +26,8 @@ best: best objective so far
 idz: IndexMap to populate inputs to ensembles
 cache: result of EIC cache
 """
-function eic(z::V, grad::V, z0::V, 
-            problem::AbstractProblem, stepsize::Float64, 
+function eic(z::V, grad::V, z0::V, problem::AbstractProblem,
+            tol::Float64, stepsize::Float64, 
             ensembles::NamedTuple{disciplines},#,NTuple{nd, Vector{HouseholderNet{L,Sn,TF}}}} where {nd,L,Sn,TF}, 
             best::Float64, cache::NamedTuple=eic_cache(ensembles)) where {V<:AbstractVector,disciplines}
     # get preallocated buffers
@@ -50,7 +50,7 @@ function eic(z::V, grad::V, z0::V,
         Zd[d] .= view(z,idz[d])
         
         # Compute vector and gradient
-        p = predict_grad!(dp[d],Zd[d], ensembles[d], WZ=WZ[d], dhdx=dhdx[d], h=h[d])
+        p = predict_grad!(dp[d],Zd[d], ensembles[d], tol, WZ=WZ[d], dhdx=dhdx[d], h=h[d])
         if g
             # @. grad = grad*p + ei * dp[d]
             grad[idz[d]] .*= p
@@ -78,6 +78,7 @@ function maximize_ei(solver::BCO, data::NamedTuple{disciplines}, ensembles::Name
     nd = length(disciplines)
     idz = indexmap(solver.problem)
     to  = solver.to
+    tol = solver.tol
     
     ## Initial guesses and best point
     z = zeros(Nz)
@@ -128,10 +129,10 @@ function maximize_ei(solver::BCO, data::NamedTuple{disciplines}, ensembles::Name
         upper =  ones(n)
 
         # Start with CMA if local gradient is too small
-        eic(z0,z,z0,solver.problem, stepsize, ensembles, best, cache)
+        eic(z0,z,z0,solver.problem, tol, stepsize, ensembles, best, cache)
         @timeit to "cma" begin
         if norm(z) < 1e-6
-            results = Evolutionary.optimize(z -> eic(z,Float64[],copy(z0), solver.problem, stepsize, ensembles, best, cache), 
+            results = Evolutionary.optimize(z -> eic(z,Float64[],copy(z0), solver.problem, tol, stepsize, ensembles, best, cache), 
                         BoxConstraints(lower, upper), z0, 
                         CMAES(μ=50,sigma0=1.), Evolutionary.Options(iterations=5000))
             maxz, maxf, numevals = Evolutionary.minimizer(results), Evolutionary.minimum(results), Evolutionary.iterations(results)
@@ -150,11 +151,13 @@ function maximize_ei(solver::BCO, data::NamedTuple{disciplines}, ensembles::Name
         opt.upper_bounds = upper
         opt.xtol_rel = 1e-7
         opt.maxeval = 2500
-        opt.min_objective = (z,grad) -> eic(z, grad, copy(z0), solver.problem, stepsize, ensembles, best, cache)
+        opt.min_objective = (z,grad) -> eic(z, grad, z0, solver.problem, tol, stepsize, ensembles, best, cache)
         (maxf,maxz,ret) = optimize(opt, z0)
         numevals = opt.numevals
         end
-        return -maxf, maxz, numevals, ret
+
+        eic_max = -eic(maxz, Float64[], z0, solver.problem, tol, 1000., ensembles, best, cache)
+        return eic_max, maxz, numevals, ret
     end
     
     ## Run maximization of EIc for each initial guess
