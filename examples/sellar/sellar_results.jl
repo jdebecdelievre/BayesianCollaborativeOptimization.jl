@@ -11,7 +11,7 @@ disciplines = discipline_names(sl)
 ##
 nruns = 20
 pad = true
-method = ["sqp1", "sqp", "sqp100","bco","bco30"]#["admm","bco","sqp"]
+method = ["sqp1", "sqp", "sqp100","bco","bco30","bco_tol_jul1"]#["admm","bco","sqp"]
 metric = Dict{Any,Any}()
 obj = Dict{Any,Any}()
 dobj = Dict{Any,Any}()

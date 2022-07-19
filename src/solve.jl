@@ -103,7 +103,7 @@ function solve(solver::AbstractSolver, options::SolveOptions;
         # B/ Evaluate and save new point
         for d=disciplines
             @timeit to "$d" (zs = subspace(problem, Val(d), Zd[d], "$savedir/eval/$d/$(ite).txt"))
-            sqJd = norm(zs-Zd[d])
+            sqJd = norm(zs-z[idz[d]]) # z[idz.d] =/= Zd[d] for ADMM. Really the infeasibility should be measured against z[idz.d]
             new_data = (;
                 Z=Zd[d], Zs=zs, sqJ=sqJd, fsb=(sqJd<tol), ite=ite
             )
