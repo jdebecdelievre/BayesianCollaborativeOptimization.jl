@@ -48,7 +48,6 @@ import Parameters: @consts
     CDp = (FuseDragArea +  2 * S) * CDpw / S
 end
 
-
 #### ---- Global variables ----
 @consts begin
     global_variables = (;
@@ -365,7 +364,7 @@ struct Tailless <: AbstractProblem end
 BayesianCollaborativeOptimization.discipline_names(::Tailless) = (:struc, :aero)
 BayesianCollaborativeOptimization.indexmap(::Tailless) = tailless_idz
 BayesianCollaborativeOptimization.number_shared_variables(::Tailless) = 5
-BayesianCollaborativeOptimization.objective_opt(::Tailless) = [Zopt.R]
+BayesianCollaborativeOptimization.objective_opt(::Tailless) = Zopt.R
 
 function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z::AbstractArray, filename::String, 
     ipoptions::Dict{Any,Any} = Dict{Any,Any}("print_level"=>2, "file_print_level"=>5, "tol"=>1e-8, "output_file"=>"tmp.txt","linear_solver"=>"ma97"))

@@ -121,66 +121,63 @@ function maximize_ei(solver::BCO, data::NamedTuple{disciplines}, ensembles::Name
     ## Constrained Expected Improvement EIc function
     # Preallocations
     cache = eic_cache(ensembles)
-
-    ## Maximization function
-    function maximize(z0, stepsize)
-        n = length(z0)
-        lower = zeros(n)
-        upper =  ones(n)
-
-        # Start with CMA if local gradient is too small
-        eic(z0,z,z0,solver.problem, tol, stepsize, ensembles, best, cache)
-        @timeit to "cma" begin
-        if norm(z) < 1e-6
-            results = Evolutionary.optimize(z -> eic(z,Float64[],copy(z0), solver.problem, tol, stepsize, ensembles, best, cache), 
-                        BoxConstraints(lower, upper), z0, 
-                        CMAES(μ=50,sigma0=1.), Evolutionary.Options(iterations=5000))
-            maxz, maxf, numevals = Evolutionary.minimizer(results), Evolutionary.minimum(results), Evolutionary.iterations(results)
-            z0 .= maxz
-        end
-        end
-        
-        # Cast to strict bounds before using SLSQP
-        @. z0 = max(z0, eps())
-        @. z0 = min(z0, 1-eps())
-
-        # Use SLSQP
-        @timeit to "slsqp" begin
-        opt = Opt(:LD_SLSQP, n)
-        opt.lower_bounds = lower
-        opt.upper_bounds = upper
-        opt.xtol_rel = 1e-7
-        opt.maxeval = 2500
-        opt.min_objective = (z,grad) -> eic(z, grad, z0, solver.problem, tol, stepsize, ensembles, best, cache)
-        (maxf,maxz,ret) = optimize(opt, z0)
-        numevals = opt.numevals
-        end
-
-        eic_max = -eic(maxz, Float64[], z0, solver.problem, tol, 1000., ensembles, best, cache)
-        return eic_max, maxz, numevals, ret
-    end
+    
+    ## Initialize SLSQP
+    tol = 0.
+    slsqp = Opt(:LD_SLSQP, Nz)
+    slsqp.lower_bounds = zeros(Nz)
+    slsqp.upper_bounds = ones(Nz)
+    slsqp.xtol_rel = 1e-7
+    slsqp.maxeval = 2500
     
     ## Run maximization of EIc for each initial guess
     stepsize = ones(m*nd) * solver.stepsize
     msg = Vector{Symbol}(undef,m*nd)
     for i = 1:length(EIc)
-        EIc[i], z, ite[i], msg[i] = maximize(copy(iniZ[i]),stepsize[i])
-        if EIc[i] < 1e-4
-            stepsize[i] *= 2
-            EIc[i], z, ite[i], msg[i] = maximize(copy(iniZ[i]),stepsize[i])
+        # Cast to strict bounds before using SLSQP
+        @. iniZ[i] = max(iniZ[i], eps())
+        @. iniZ[i] = min(iniZ[i], 1-eps())
+        
+        # Use SLSQP
+        @timeit to "slsqp" begin
+            slsqp.min_objective = (z,grad) -> eic(z, grad, iniZ[i], solver.problem, tol, stepsize[i], ensembles, best, cache)
+            maxZ[i] .= iniZ[i]
+            _, z, msg[i] = optimize(slsqp, maxZ[i])
+            maxZ[i] .= z
+            EIc[i] = -eic(maxZ[i], Float64[], iniZ[i], solver.problem, tol, 1000., ensembles, best, cache)
+            ite[i] = slsqp.numevals
         end
-        maxZ[i] .= z
     end
 
     # Save EIc found
     path = "$savedir/eic.jld2"
-    save(path, "EIc", EIc, "maxZ", maxZ, "iniZ", 
-                iniZ, "ite", ite, "best", best, "stepsize", stepsize,
-                "msg",msg)
+    save(path, "EIc", EIc, "maxZ", maxZ, "iniZ", iniZ, "ite", ite, 
+                "best", best, "stepsize", stepsize, "msg",msg)
     
     # Return best 
     max_eic, imax = findmax(EIc)
     z = maxZ[imax]
+
+    ## Also use MLSL
+     @timeit to "mlsl" begin
+        z0 = copy(z)
+    
+        gopt = Opt(:G_MLSL_LDS, Nz)
+        local_optimizer!(gopt, slsqp)
+        population!(gopt, 5000)
+        gopt.lower_bounds = lower_bounds(slsqp)
+        gopt.upper_bounds = upper_bounds(slsqp)
+        gopt.xtol_rel = 1e-7
+        gopt.maxeval = 2500
+        gopt.min_objective = (z,grad) -> eic(z, grad, z0, solver.problem, tol, stepsize[imax], ensembles, best, cache)
+        (maxf,maxz,ret) = optimize(gopt, z0)
+        eic_mlsl = -eic(maxz, Float64[], z0, solver.problem, tol, 1000., ensembles, best, cache)
+    end
+
+    if eic_mlsl > max_eic
+        z = maxz
+        max_eic = eic_mlsl
+    end
 
     return z, max_eic
 end

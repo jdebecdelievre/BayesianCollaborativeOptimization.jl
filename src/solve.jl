@@ -45,12 +45,11 @@ function solve(solver::AbstractSolver, options::SolveOptions;
     map(d->mkpath("$savedir/eval/$d"), disciplines)
     if iteration_restart < 1        
         # Get ini samples
-        if ini_samples == 0
-            @assert typeof(z0)!= Nothing
-            Z = [z0]
-            ini_samples += 1
-        else
+        if isa(z0, Nothing)
             Z = [next!(Sz) for _=1:ini_samples]
+        else
+            Z = [z0]
+            ini_samples = 1
         end
         obj = map(z->objective(problem, z),Z)
         save("$savedir/obj.jld2","Z",Z,"obj",obj)
@@ -104,6 +103,7 @@ function solve(solver::AbstractSolver, options::SolveOptions;
         for d=disciplines
             @timeit to "$d" (zs = subspace(problem, Val(d), Zd[d], "$savedir/eval/$d/$(ite).txt"))
             sqJd = norm(zs-z[idz[d]]) # z[idz.d] =/= Zd[d] for ADMM. Really the infeasibility should be measured against z[idz.d]
+            # sqJd = norm(zs-Zd[d])
             new_data = (;
                 Z=Zd[d], Zs=zs, sqJ=sqJd, fsb=(sqJd<tol), ite=ite
             )

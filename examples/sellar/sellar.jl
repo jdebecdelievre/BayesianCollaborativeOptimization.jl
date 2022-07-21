@@ -165,19 +165,3 @@ function sellar_aao(z0)
     return  objective(prb, xopt), unscale_unpack(xopt, idx, V)
 end
 
-##
-# faao, vaao = sellar_aao(ini_scaled(V))
-# # options = SolveOptions(tol=1e-6, n_ite=15, ini_samples=1, warm_start_sampler=i, savedir="$savedir/xpu$i/bco/")
-# # solve(bco, options)
-# solver = BCO(Sellar(), N_epochs=100_000, stepsize=10.)
-# options = SolveOptions(n_ite=5, ini_samples=1, warm_start_sampler=100, tol=1e-6)
-# obj, sqJ, fsb, Z = solve(solver, options,z0=ini_scaled(V))
-# v = unscale_unpack(Z[end],idx,V)
-
-# ## Load
-# ite = 1
-# data = load_data("xpu",(:d1,:d2))
-# trim_data!(data,ite)
-# ensembles = load_ensemble("xpu/solver/training/$ite",(:d1,:d2));
-# @load "xpu/solver/eic/$ite/eic.jld2" EIc maxZ iniZ msg ite best
-# @load "xpu/data.jld2" Z sqJ fsb

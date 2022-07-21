@@ -1,4 +1,7 @@
+using Pkg
+Pkg.activate("/home/adgboost/.julia/dev/BayesianCollaborativeOptimization/")
 using LinearAlgebra
+using JLD2
 using BayesianCollaborativeOptimization
 using Parameters
 using Snopt
@@ -181,7 +184,7 @@ end
 end
 
 struct UAVmarathon <: AbstractProblem end
-BayesianCollaborativeOptimization.discipline_names(::UAVmarathon) = (:prop, :wing)
+BayesianCollaborativeOptimization.discipline_names(::UAVmarathon) = disciplines
 BayesianCollaborativeOptimization.indexmap(::UAVmarathon) = idz
 BayesianCollaborativeOptimization.number_shared_variables(::UAVmarathon) = 3
 BayesianCollaborativeOptimization.objective_opt(::UAVmarathon) = zopt[1]
@@ -199,10 +202,11 @@ function BayesianCollaborativeOptimization.subspace(::UAVmarathon, ::Val{:wing},
     lx = zeros(Nx)
     ux = ones(Nx)
     Ng = 1
-    lg = [0.]
+    lg = [-Inf]
     ug = [0.]
-    ipoptions=Dict{Any,Any}("print_level"=>0)
-    options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=SNOW.IPOPT(ipoptions))
+    ipoptions=Dict{Any,Any}("print_level"=>3)
+    # options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=SNOW.IPOPT(ipoptions))
+    options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=SNOW.SNOPT())
     x0  = zeros(Nx) .+ 1/2
     xopt, fopt, info = SNOW.minimize(fun, x0, Ng, lx, ux, lg, ug, options)
     return xopt[1:3]
@@ -221,27 +225,32 @@ function BayesianCollaborativeOptimization.subspace(::UAVmarathon, ::Val{:prop},
     lx = zeros(Nx)
     ux = ones(Nx)
     Ng = 3
-    lg = [0., 0., 0.1]
+    lg = [-Inf, -Inf, 0.1]
     ug = [0., 0., 0.8]
-    ipoptions=Dict{Any,Any}("print_level"=>0)
-    options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=SNOW.IPOPT(ipoptions))
+    ipoptions=Dict{Any,Any}("print_level"=>3)
+    options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=SNOW.SNOPT())
     x0  = zeros(Nx) .+ 1/2
     xopt, fopt, info = SNOW.minimize(fun, x0, Ng, lx, ux, lg, ug, options)
     return xopt[1:3]
 end
 
-## 
-solver = SQP(UAVmarathon(), λ=1.,tol=1e-6)
-options = SolveOptions(n_ite=25, ini_samples=1, warm_start_sampler=100)
-solve(solver, options)
-ddir = (; prop="xpu/prop.jld2", wing="xpu/wing.jld2")
-data = map(load_data, ddir);
-
 ##
-options = SolveOptions(n_ite=15, ini_samples=1,tol=1e-3)
-solver = BCO(UAVmarathon(), N_epochs=100_000, stepsize=1.)
-solve(solver, options)
-ddir = (; prop="xpu/prop.jld2", wing="xpu/wing.jld2")
-data = map(load_data, ddir);
-
-##
+for i=1:20
+    options = SolveOptions(n_ite=15, ini_samples=1, warm_start_sampler=i, savedir="xpu$i/bco")
+    solver = BCO(UAVmarathon(), training_tol=1e-3, N_epochs=300_000, stepsize=100., 
+                            dropprob=0.02, αlr=0.97, nlayers=20, tol=1e-3)
+    solve(solver, options, terminal_print=false)
+    
+    ## 
+    options = SolveOptions(n_ite=150, ini_samples=1, warm_start_sampler=i, savedir="xpu$i/sqp")
+    solver = SQP(UAVmarathon(), λ=1.,tol=1e-6)
+    solve(solver, options, terminal_print=false)
+    
+    ##
+    options = SolveOptions(n_ite=150, ini_samples=1, warm_start_sampler=i, savedir="xpu$i/admm")
+    solver = ADMM(UAVmarathon(), ρ=.1)
+    solve(solver, options, terminal_print=false)
+end
+# ddir = (; prop="xpu/prop.jld2", wing="xpu/wing.jld2")
+# data = map(load_data, ddir);
+# obj, Z, fsb, sqJ = load("xpu/obj.jld2","obj","Z","fsb","sqJ");

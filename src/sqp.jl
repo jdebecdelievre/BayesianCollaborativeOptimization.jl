@@ -52,7 +52,14 @@ function solve(solver::SQP, options::SolveOptions;
     ite = 1
     mkpath("$savedir/eval/")
 
+    # fcache = 0
+    # gcache = zeros(Nd)
+    # dfcache = zeros(Nz)
+    # dgcache = zeros(Nd,Nz)
+    # zcache = zeros(Nz)
     function cofun(g, df, dg, z)
+        # return saved values if duplicate z
+
         push!(Z, copy(z))
         
         # Objective
@@ -92,7 +99,7 @@ function solve(solver::SQP, options::SolveOptions;
     lg = -Inf * ones(Nd)
     ug = tol^2 * ones(Nd)# upper bounds on g
     
-    co_options = Dict{Any,Any}("tol"=>tol^2, "max_iter"=>n_ite, "output_file"=>"$savedir/solver.txt")
+    co_options = Dict{Any,Any}("max_iter"=>n_ite, "output_file"=>"$savedir/solver.txt")
     options = SNOW.Options(derivatives=SNOW.UserDeriv(), solver=SNOW.IPOPT(co_options))
     xopt, fopt, info = SNOW.minimize(cofun, z0, Nd, lz, uz, lg, ug, options)
     

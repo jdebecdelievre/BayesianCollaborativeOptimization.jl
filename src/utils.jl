@@ -14,20 +14,23 @@ function get_metrics(mdl::AbstractProblem, savedir::String)
     metric = [abs.(obj .- f) / (ub_opt - lb_opt) + sum(sqJ) for f=fopt]
     i = [argmin([m[k] for m=metric]) for k=1:length(obj)]
     metric = [metric[i[k]][k] for k=1:length(obj)]
+    dobj = [abs.(obj[k] - fopt[i[k]]) for k=1:length(obj)]
 
     # Reorder
     for i=2:length(metric)
         # metric[i] = min(metric[i],metric[i-1])
         if metric[i] > metric[i-1]
+        # if dobj[i] > dobj[i-1]
             metric[i] = metric[i-1]
             obj[i] = obj[i-1]
+            dobj[i] = dobj[i-1]
             for j=1:Nd
                 sqJ[j][i] = sqJ[j][i-1]
             end
         end
     end
 
-    return metric, obj, obj .- fopt[i], sqJ
+    return metric, obj, dobj, sqJ
 end
 
 function datacheck(data::NamedTuple)
