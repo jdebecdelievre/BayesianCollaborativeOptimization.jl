@@ -17,10 +17,11 @@ function learn_feasible_set(options, data, savedir)
     p = plot()
 
     # Prep data
-    ifs = .!data.fsb
+    fsb = data.sqJ .< options.training_tol 
+    ifs = .!fsb
     X   = [SVector{n}.(data.Z); SVector{n}.(data.Zs[ifs])]
     Y   = [data.sqJ; 0*data.sqJ[ifs]]
-    fsb = [data.fsb; data.fsb[ifs]]
+    fsb = [fsb; fsb[ifs]]
     ∇Y  = (data.Z-data.Zs)
     ∇Y  = [∇Y; ∇Y[ifs]]
     normalize!.(∇Y)

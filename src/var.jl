@@ -31,13 +31,14 @@ struct Var{N,ng}
     lb::Vector{Float64}
     ub::Vector{Float64}
     group::NTuple{ng,Symbol}
-    function Var(; lb, ub, ini=copy(lb), group::Union{Symbol,NTuple{ng,Symbol}}=(), 
-                    N=max(length(ini),length(lb),length(ub))) where ng
+    function Var(; lb, ub, ini=copy(lb), group::Union{Symbol,NTuple{ng,Symbol}} where ng =(), 
+                    N=max(length(ini),length(lb),length(ub)))
         ini, lb, ub = checkinput(ini, N), checkinput(lb, N), checkinput(ub, N)
         ini, lb, ub = promote(ini, lb, ub)
         if typeof(group) == Symbol
             group = (group,)
         end
+        ng = length(group)
         @assert (all(ini <= ub) && (ini >= lb)) "Initial guess not within bounds: $lb <= $ini <= $ub"
         return new{N,ng}(ini,lb,ub,group)
     end

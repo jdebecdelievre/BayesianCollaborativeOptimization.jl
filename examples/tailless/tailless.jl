@@ -48,7 +48,6 @@ import Parameters: @consts
     CDp = (FuseDragArea +  2 * S) * CDpw / S
 end
 
-
 #### ---- Global variables ----
 @consts begin
     global_variables = (;
@@ -357,7 +356,7 @@ end
         thickness = [0.003952060271571667, 0.0035224933357481144, 0.0031001273620913563, 0.0026882960282519535, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665, 0.0026041666666666665], 
         Wt = 55.74934541169471)
     Zopt = NamedTuple(Pair(k,(tailless_optimum[k].-global_variables[k].lb)./(global_variables[k].ub-global_variables[k].lb)) for k=keys(global_variables))
-    zopt = vcat(Zopt...)
+    zopt = [vcat(Zopt...)] # list of local optima
 end
 
 #### ---- Collaborative Optimization ----

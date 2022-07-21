@@ -11,7 +11,6 @@ disciplines = discipline_names(sl)
 ##
 nruns = 20
 pad = true
-# method = ["sqp1", "sqp", "sqp100","bco","bco30","bco_tol_jul1","bco_jul20"]
 method = ["bco","sqp","admm"]
 metric = Dict{Any,Any}()
 obj = Dict{Any,Any}()
@@ -34,39 +33,6 @@ for m=method
         sqJ[m]    = [map(s->[s; ones(l-length(s))*s[end]],ss) for ss=sqJ[m]]
     end
 end
-
-##
-p = plot(yaxis=:log10)
-for m=method
-    l = min(30,minimum(length, metric[m]))
-    plot!(p,mean([m_[1:l] for m_=metric[m]]), yaxis=:log10,label=m)
-end
-xlabel!("Number of Subspace Evaluations")
-ylabel!("Metric")
-title!("Average Metric For 20 Random Initial Guesses")
-# savefig("$HOME/examples/sellar/xp_jun30/comparative_plot_june28_sellar.pdf")
-
-##
-p = plot(yaxis=:log10)
-for m=method
-    l = min(30,minimum(length, dobj[m]))
-    plot!(p,mean([abs.(m_[1:l]) for m_=dobj[m]]),label=m)
-end
-xlabel!("Number of Subspace Evaluations")
-ylabel!("Objective")
-title!("Average obj For 20 Random Initial Guesses")
-# savefig("$HOME/examples/sellar/xp_jun30/comparative_plot_june28_sellar.pdf")
-##
-p = plot(yaxis=:log10)
-l=30
-for m=method
-    l = min(30,minimum(d->length(sum(d)), sqJ[m]))
-    plot!(p,mean([sum(m_)[1:l] for m_=sqJ[m]]),label=m)
-end
-xlabel!("Number of Subspace Evaluations")
-ylabel!("√J₁+√J₂")
-title!("Average Infeasibility For 20 Random Initial Guesses")
-
 
 ##### PLOTS FOR DEFENSE PRESENTATION #####
 
@@ -92,7 +58,7 @@ end
 hline!(p, -objective_opt(Sellar()), linestyle=:dash, label="optimum")
 xlabel!("Number of Subspace Evaluations")
 title!("Objective Function For 20 Random Initial Guesses")
-savefig("$HOME/examples/sellar/xp_jul20/comparative_obj_jul20_sellar.pdf")
+savefig("$HOME/examples/sellar/comparative_obj_jul20_sellar.pdf")
 
 
 ## Feasibility
@@ -114,7 +80,7 @@ end
 ylims!(5e-5, 1.)
 xlabel!("Number of Subspace Evaluations")
 title!("Feasibility For 20 Random Initial Guesses")
-savefig("$HOME/examples/sellar/xp_jul20/comparative_sqJ_jul20_sellar.pdf")
+savefig("$HOME/examples/sellar/comparative_sqJ_jul20_sellar.pdf")
 
 
 
@@ -149,7 +115,7 @@ hline!(p, -objective_opt(sl), linestyle=:dash, label="optimum")
 ylims!(5.,30,)
 xlabel!("Number of Subspace Evaluations")
 title!("Objective Function For 20 Random Initial Guesses")
-savefig("$HOME/examples/sellar/xp_jul20/comparative_obj_zoomed_jul20_sellar.pdf")
+savefig("$HOME/examples/sellar/comparative_obj_zoomed_jul20_sellar.pdf")
 
 ## Feasibility zoomed in without ADMM
 p = plot(yaxis=:log10)
@@ -170,4 +136,4 @@ end
 ylims!(5e-5, .1)
 xlabel!("Number of Subspace Evaluations")
 title!("Feasibility For 20 Random Initial Guesses")
-savefig("$HOME/examples/sellar/xp_jul20/comparative_sqJ_zoomed_jul20_sellar.pdf")
+savefig("$HOME/examples/sellar/comparative_sqJ_zoomed_jul20_sellar.pdf")

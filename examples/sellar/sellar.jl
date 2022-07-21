@@ -19,8 +19,8 @@ using Parameters
 
     # vopt = (; z = -2.8014207800091704, x = [0.07572497323210897, 0.10214619566441839], y1 = 8.001, y2 = 0.12915237776863955)
     # zopt = ([-2.8014207800091704, 0.07572497323210897, 0.10214619566441839, 8.001, 0.12915237776863955] - lower(V)) ./ (upper(V) - lower(V))
-    zopt = [3.0284, 0.0000, 0.0000, 8.000, 5.8569]
-    fopt = 8.00286
+    zopt = [[3.0284, 0.0000, 0.0000, 8.000, 5.8569]]
+    fopt = [8.00286, 8.9867]
 end
 
 ##
@@ -67,12 +67,14 @@ function BayesianCollaborativeOptimization.subspace(::Sellar, ::Val{:d1},  z0::A
         @. dg[1,1:5] *= k
 
         for i=1:5
-            g[1+i] = z[5+i] - z[i]
-            dg[1+i,i] = -1
-            dg[1+i,5+i] = 1
             if i == idx.y2[1]
-                g[1+i] *= -1
-                @. dg[1+i,:] *= -1
+                g[1+i] = z[5+i] - z[i]
+                dg[1+i,i] = -1
+                dg[1+i,5+i] = 1
+            else
+                g[1+i] = z[i] - z[5+i]
+                dg[1+i,i] = 1
+                dg[1+i,5+i] = -1
             end
         end
 
@@ -85,7 +87,7 @@ function BayesianCollaborativeOptimization.subspace(::Sellar, ::Val{:d1},  z0::A
     lx = zeros(2*Nx) # lower bounds on x
     ux = ones(2*Nx) # upper bounds on x
     Ng = 1+Nx
-    lg = [0.,-Inf,-Inf,-Inf,-Inf,-Inf,]
+    lg = [0.,0.,-Inf,-Inf,-Inf,-Inf,]
     ug = [0.,0.,0.,0.,0.,0.]
     
     options = SNOW.Options(derivatives=SNOW.UserDeriv(), solver=SNOW.IPOPT(ipoptions), sparsity=SNOW.DensePattern())
@@ -113,12 +115,14 @@ function BayesianCollaborativeOptimization.subspace(::Sellar, ::Val{:d2},  z0::A
         @. dg[1,1:5] *= k
 
         for i=1:5
-            g[1+i] = z[5+i] - z[i]
-            dg[1+i,i] = -1
-            dg[1+i,5+i] = 1
             if i == idx.y2[1]
-                g[1+i] *= -1
-                @. dg[1+i,:] *= -1
+                g[1+i] = z[5+i] - z[i]
+                dg[1+i,i] = -1
+                dg[1+i,5+i] = 1
+            else
+                g[1+i] = z[i] - z[5+i]
+                dg[1+i,i] = 1
+                dg[1+i,5+i] = -1
             end
         end
 
@@ -131,7 +135,7 @@ function BayesianCollaborativeOptimization.subspace(::Sellar, ::Val{:d2},  z0::A
     lx = zeros(2*Nx) # lower bounds on x
     ux = ones(2*Nx) # upper bounds on x
     Ng = 1+Nx
-    lg = [0.,-Inf,-Inf,-Inf,-Inf,-Inf,]
+    lg = [0.,0.,-Inf,-Inf,-Inf,-Inf,]
     ug = [0.,0.,0.,0.,0.,0.]
 
     options = SNOW.Options(derivatives=SNOW.UserDeriv(), solver=SNOW.IPOPT(ipoptions))
@@ -161,19 +165,3 @@ function sellar_aao(z0)
     return  objective(prb, xopt), unscale_unpack(xopt, idx, V)
 end
 
-##
-# faao, vaao = sellar_aao(ini_scaled(V))
-# # options = SolveOptions(tol=1e-6, n_ite=15, ini_samples=1, warm_start_sampler=i, savedir="$savedir/xpu$i/bco/")
-# # solve(bco, options)
-# solver = BCO(Sellar(), N_epochs=100_000, stepsize=10.)
-# options = SolveOptions(n_ite=5, ini_samples=1, warm_start_sampler=100, tol=1e-6)
-# obj, sqJ, fsb, Z = solve(solver, options,z0=ini_scaled(V))
-# v = unscale_unpack(Z[end],idx,V)
-
-# ## Load
-# ite = 1
-# data = load_data("xpu",(:d1,:d2))
-# trim_data!(data,ite)
-# ensembles = load_ensemble("xpu/solver/training/$ite",(:d1,:d2));
-# @load "xpu/solver/eic/$ite/eic.jld2" EIc maxZ iniZ msg ite best
-# @load "xpu/data.jld2" Z sqJ fsb

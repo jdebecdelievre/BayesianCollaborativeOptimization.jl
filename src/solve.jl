@@ -12,7 +12,6 @@ Options structure for solution process
     ini_samples::Int64 = 2 # number of initial random samples. 0 to use provided z0
     iteration_restart::Int64 = 0 # Iteration Number at which to restart.
     warm_start_sampler::Int64 = 0
-    tol::Float64 = 5e-3
     savedir::String = "xpu"
 end
 
@@ -21,13 +20,14 @@ Receives problem definition, solver type, options.
 """
 function solve(solver::AbstractSolver, options::SolveOptions; 
         z0::Union{Nothing, <:AbstractArray}=nothing, terminal_print=true)
-    (; n_ite, ini_samples, iteration_restart, warm_start_sampler, tol, savedir) = options
+    (; n_ite, ini_samples, iteration_restart, warm_start_sampler, savedir) = options
     
     problem     = solver.problem
     disciplines = discipline_names(problem)
     Nz          = number_shared_variables(problem)
     idz         = indexmap(problem)
     to          = solver.to
+    tol         = solver.tol
     
     # create xp directory, save options
     mkpath(savedir)
@@ -45,12 +45,11 @@ function solve(solver::AbstractSolver, options::SolveOptions;
     map(d->mkpath("$savedir/eval/$d"), disciplines)
     if iteration_restart < 1        
         # Get ini samples
-        if ini_samples == 0
-            @assert typeof(z0)!= Nothing
-            Z = [z0]
-            ini_samples += 1
-        else
+        if isa(z0, Nothing)
             Z = [next!(Sz) for _=1:ini_samples]
+        else
+            Z = [z0]
+            ini_samples = 1
         end
         obj = map(z->objective(problem, z),Z)
         save("$savedir/obj.jld2","Z",Z,"obj",obj)
@@ -78,9 +77,12 @@ function solve(solver::AbstractSolver, options::SolveOptions;
             save_data("$savedir/$d.jld2",D)
         end
     else
-        # Load data
+        # Load discipline data
         data = NamedTuple{disciplines}(map(d->load_data("$savedir/$d.jld2"), disciplines))
         trim_data!(data, iteration_restart)
+
+        # Load objective data
+        Z, obj, sqJ, fsb = load("$savedir/obj.jld2","Z","obj","sqJ","fsb")
     end
 
     # Optimization
@@ -100,7 +102,8 @@ function solve(solver::AbstractSolver, options::SolveOptions;
         # B/ Evaluate and save new point
         for d=disciplines
             @timeit to "$d" (zs = subspace(problem, Val(d), Zd[d], "$savedir/eval/$d/$(ite).txt"))
-            sqJd = norm(zs-Zd[d])
+            sqJd = norm(zs-z[idz[d]]) # z[idz.d] =/= Zd[d] for ADMM. Really the infeasibility should be measured against z[idz.d]
+            # sqJd = norm(zs-Zd[d])
             new_data = (;
                 Z=Zd[d], Zs=zs, sqJ=sqJd, fsb=(sqJd<tol), ite=ite
             )

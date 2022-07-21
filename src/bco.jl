@@ -3,8 +3,9 @@ Options structure for BCO
 """
 struct BCO{problem} <: AbstractSolver{problem}
     problem::problem
-
+    tol::Float64
     # Training
+    training_tol::Float64
     nparticles::Int64 
     ntrials::Int64
     nlayers::Int64 
@@ -22,23 +23,26 @@ struct BCO{problem} <: AbstractSolver{problem}
     to::TimerOutput
 
     function BCO(problem::prb;
-            # Training
-            nparticles::Int64 = 6,
-            ntrials::Int64 = 2,
-            nlayers::Int64 = 20,
-            lr::Float64 = 0.01,
-            αlr::Float64 = .95,
-            N_epochs::Int64 = 500_000,
-            logfreq::Int64 = 1000,
-            nresample::Int64 = 0,
-            dropprob::Float64 = 0.,
+        tol::Float64 = 5e-3,
 
-            # Minimization
-            stepsize::Float64=1.
+        # Training
+        training_tol::Float64 = 1e-6,
+        nparticles::Int64 = 6,
+        ntrials::Int64 = 2,
+        nlayers::Int64 = 20,
+        lr::Float64 = 0.01,
+        αlr::Float64 = .95,
+        N_epochs::Int64 = 500_000,
+        logfreq::Int64 = 1000,
+        nresample::Int64 = 0,
+        dropprob::Float64 = 0.,
 
-            ) where {prb<:AbstractProblem}
+        # Minimization
+        stepsize::Float64=1.
+
+        ) where {prb<:AbstractProblem}
         to = TimerOutput()
-        new{prb}(problem, nparticles, ntrials, nlayers, lr, αlr, N_epochs, logfreq, nresample, dropprob, stepsize, to)
+        new{prb}(problem, tol, training_tol, nparticles, ntrials, nlayers, lr, αlr, N_epochs, logfreq, nresample, dropprob, stepsize, to)
     end
 end
 

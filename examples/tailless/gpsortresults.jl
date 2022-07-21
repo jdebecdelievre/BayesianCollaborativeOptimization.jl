@@ -36,12 +36,12 @@ for j=1:size(D,2)];
 ##
 sqJaero = map((z,zs)->norm.(z-zs), gZ,gZaero)
 sqJstruc = map((z,zs)->norm.(z-zs), gZ,gZstruc)
-gmetric = map(z->abs.(first.(z).+(-zopt[1])),gZ) + sqJaero + sqJstruc
+gmetric = map(z->abs.(first.(z).+(-zopt[1][1])),gZ) + sqJaero + sqJstruc
 for m=gmetric
     for i=2:length(m)
         m[i] = min(m[i],m[i-1])
     end
-    end
+end
 
 ##
 

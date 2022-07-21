@@ -15,14 +15,15 @@ struct ADMM{problem,disciplines,ndisciplines} <: AbstractSolver{problem}
     y::NamedTuple{disciplines,NTuple{ndisciplines,Vector{Float64}}} # Lagrange Multipliers
     yobj::Vector{Float64}
     to::TimerOutput
-    function ADMM(problem::pb; ρ::Float64=1.) where {pb<:AbstractProblem}
+    tol::Float64
+    function ADMM(problem::pb; ρ::Float64=1.,tol::Float64 = 5e-3) where {pb<:AbstractProblem}
         disc = discipline_names(problem)
         idz  = indexmap(problem)
         Nz   = number_shared_variables(problem)
         y    = map(id->zeros(length(id)), idz)
         yobj = zeros(Nz)
         to = TimerOutput()
-        return new{pb, disc,length(disc)}(problem, ρ, y, yobj, to)
+        return new{pb, disc,length(disc)}(problem, ρ, y, yobj, to, tol)
     end
 end
 
@@ -79,7 +80,7 @@ function get_new_point(ite::Int64, solver::ADMM,
 
     # Evaluate target for each discipline
     Zd = map((id,iy)->z̄s[id] - iy/ρ, idz, y)
-    @. z̄s -= yobj / ρ
+    # @. z̄s -= yobj / ρ
     
     return z̄s, Zd, 0.
 end
