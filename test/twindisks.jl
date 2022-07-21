@@ -18,8 +18,9 @@ BayesianCollaborativeOptimization.indexmap(::TwinDisks) = idz_twins
 BayesianCollaborativeOptimization.number_shared_variables(::TwinDisks) = 2
 BayesianCollaborativeOptimization.subspace(::TwinDisks, ::Val{:A}, z::AbstractArray,s::String) = z - ([(z[1]-cA[1]), (z[2]-cA[2])] / norm([(z[1]-cA[1]), (z[2]-cA[2])])).*max(0, sqrt((z[1]-cA[1])^2 +(z[2]-cA[2])^2)-.4)
 BayesianCollaborativeOptimization.subspace(::TwinDisks, ::Val{:B}, z::AbstractArray,s::String) = z - ([(z[1]-cB[1]), (z[2]-cB[2])] / norm([(z[1]-cB[1]), (z[2]-cB[2])])).*max(0, sqrt((z[1]-cB[1])^2 +(z[2]-cB[2])^2)-.4)
+BayesianCollaborativeOptimization.objective_opt(::TwinDisks) = opt[1]
 
-
+#=
 ##
 solver = SQP(TwinDisks(), λ=1.)
 options = SolveOptions(n_ite=25, ini_samples=1, warm_start_sampler=100)
@@ -394,3 +395,4 @@ xlabel!("Subspace Evaluations")
 ylabel!(L"\Vert z-z_{opt} \Vert_2")
 title!("Convergence For 12 Initial Guesses")
 savefig( "$HOME/test/twindisks_jun9_8/figvsCO_hairlines.pdf")
+=#

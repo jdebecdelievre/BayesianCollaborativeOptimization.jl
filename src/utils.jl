@@ -1,4 +1,4 @@
-function get_metrics(mdl::AbstractProblem, savedir::String, zopt::AbstractVector)
+function get_metrics(mdl::AbstractProblem, savedir::String)
     disciplines = discipline_names(mdl)
     Nd = length(disciplines)
     fopt = objective_opt(mdl)
