@@ -1,5 +1,3 @@
-using Pkg
-Pkg.activate("/home/adgboost/.julia/dev/BayesianCollaborativeOptimization/")
 using LinearAlgebra
 using JLD2
 using BayesianCollaborativeOptimization
@@ -187,7 +185,7 @@ struct UAVmarathon <: AbstractProblem end
 BayesianCollaborativeOptimization.discipline_names(::UAVmarathon) = disciplines
 BayesianCollaborativeOptimization.indexmap(::UAVmarathon) = idz
 BayesianCollaborativeOptimization.number_shared_variables(::UAVmarathon) = 3
-BayesianCollaborativeOptimization.objective_opt(::UAVmarathon) = zopt[1]
+BayesianCollaborativeOptimization.objective_opt(::UAVmarathon) = [zopt[1]]
 
 
 function BayesianCollaborativeOptimization.subspace(::UAVmarathon, ::Val{:wing}, z0::AbstractArray, filename::String)
@@ -233,24 +231,3 @@ function BayesianCollaborativeOptimization.subspace(::UAVmarathon, ::Val{:prop},
     xopt, fopt, info = SNOW.minimize(fun, x0, Ng, lx, ux, lg, ug, options)
     return xopt[1:3]
 end
-
-##
-for i=1:20
-    options = SolveOptions(n_ite=15, ini_samples=1, warm_start_sampler=i, savedir="xpu$i/bco")
-    solver = BCO(UAVmarathon(), training_tol=1e-3, N_epochs=300_000, stepsize=100., 
-                            dropprob=0.02, αlr=0.97, nlayers=20, tol=1e-3)
-    solve(solver, options, terminal_print=false)
-    
-    ## 
-    options = SolveOptions(n_ite=150, ini_samples=1, warm_start_sampler=i, savedir="xpu$i/sqp")
-    solver = SQP(UAVmarathon(), λ=1.,tol=1e-6)
-    solve(solver, options, terminal_print=false)
-    
-    ##
-    options = SolveOptions(n_ite=150, ini_samples=1, warm_start_sampler=i, savedir="xpu$i/admm")
-    solver = ADMM(UAVmarathon(), ρ=.1)
-    solve(solver, options, terminal_print=false)
-end
-# ddir = (; prop="xpu/prop.jld2", wing="xpu/wing.jld2")
-# data = map(load_data, ddir);
-# obj, Z, fsb, sqJ = load("xpu/obj.jld2","obj","Z","fsb","sqJ");
