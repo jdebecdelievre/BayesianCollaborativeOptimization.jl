@@ -12,7 +12,7 @@ gmet = [ 0.9395783514629933, 0.6644157664688632, 0.24305338004907254, 0.17855792
 
 ##
 
-method = ["bco22","sqp22"]
+method = ["bco","sqp"]
 nruns = 20
 pad = true
 metric = Dict{Any,Any}()
@@ -21,7 +21,7 @@ dobj = Dict{Any,Any}()
 sqJ = Dict{Any,Any}()
 for m=method
     #
-    M = map(i->get_metrics(T, "$HOME/examples/tailless/xp_jun29/$m/xpu$i"),1:nruns)
+    M = map(i->get_metrics(T, "$HOME/examples/tailless/xp_jul21/$m/xpu$i"),1:nruns)
     metric[m] = first.(M)
     sqJ[m] = last.(M)
     obj[m] = getindex.(M,[2])
@@ -29,7 +29,7 @@ for m=method
 
     #
     if pad
-        l         = maximum(length, metric[m])
+        l = maximum(length, metric[m])
         metric[m] = [[s;ones(l-length(s))*s[end]] for s=metric[m]]
         obj[m]    = [[s;ones(l-length(s))*s[end]] for s=obj[m]]
         dobj[m]   = [[s;ones(l-length(s))*s[end]] for s=dobj[m]]
@@ -46,47 +46,79 @@ plot!(gmet, yaxis=:log10,label="gpsort")
 xlabel!("Number of Subspace Evaluations")
 ylabel!("Metric")
 title!("Average Metric For 20 Random Initial Guesses")
-# savefig("$HOME/examples/tailless/xp_jun29/comparative_plot_june29_tailless.pdf")
+# savefig("$HOME/examples/tailless/xp_jul21/comparative_plot_jul21_tailless.pdf")
 
 ##
+method = ["bco","sqp"]
+leg = ["Bayesian CO", "SQP"]
 using Plots.PlotMeasures
 p = plot()#yaxis=:log10)
 ylabel!(p, "Range (nautical miles)")
 lb = global_variables.R.lb[1]
 ub = global_variables.R.ub[1]
 for (kc,m)=enumerate(method)
-    l = min(32,minimum(length, metric[m]))
-    O = zeros(l)
+    l0  = (m[1:3] == "sqp") ? 2 : 1
+    l = min(32,minimum(length, metric[m])) + l0 - 1
+    O = zeros(l-l0+1)
     n = 0
-    for k=[1,3,4,7,8,9,10,11,12,13,14,15,16,17,19,20]
-        o = obj[m][k][1:l] .* (ub-lb) .+ lb
+    for k=1:20
+        o = obj[m][k][l0:l] .* (ub-lb) .+ lb
         O += o
         n += 1
         plot!(p,o, alpha=.5, linewidth=.5,label="",color=kc)
     end
-    plot!(p, O./n, linewidth=2, label=m[1:3],color=kc)
+    plot!(p, O./n, linewidth=2, label=leg[kc],color=kc)
 end
 hline!(p, [tailless_optimum.R], linestyle=:dash, label="optimum")
 ylims!(lb,ub)
 xlabel!("Number of Subspace Evaluations")
 title!("Objective Function For 20 Random Initial Guesses")
-savefig("$HOME/examples/tailless/xp_jun29/comparative_R_june29_tailless.pdf")
+savefig("$HOME/examples/tailless/comparative_R_jul21_tailless.pdf")
 
 ##
-p = plot()
+method = ["bco","sqp"]
+leg = ["Bayesian CO", "SQP"]
+using Plots.PlotMeasures
+p = plot(yaxis=:log10)
+ylabel!(p, "Range (nautical miles)")
+lb = global_variables.R.lb[1]
+ub = global_variables.R.ub[1]
+for (kc,m)=enumerate(method)
+    l0  = (m[1:3] == "sqp") ? 2 : 1
+    l = min(32,minimum(length, metric[m])) + l0 - 1
+    O = zeros(l-l0+1)
+    n = 0
+    for k=1:20
+        o = dobj[m][k][l0:l]
+        O += o
+        n += 1
+        plot!(p,o, alpha=.5, linewidth=.5,label="",color=kc)
+    end
+    plot!(p, O./n, linewidth=2, label=leg[kc],color=kc)
+end
+hline!(p, [tailless_optimum.R], linestyle=:dash, label="optimum")
+ylims!(1e-3, 0.5)
+xlabel!("Number of Subspace Evaluations")
+title!("Objective Function For 20 Random Initial Guesses")
+savefig("$HOME/examples/tailless/comparative_dR_jul21_tailless.pdf")
+
+##
+p = plot(yaxis=:log10)
 ylabel!(p, L"\sqrt{J_{aero}} + \sqrt{J_{struc}}")
 for (kc,m)=enumerate(method)
-    l = min(32,minimum(length, metric[m]))
-    SQJ = zeros(l)
+    l0  = (m[1:3] == "sqp") ? 2 : 1
+    l = min(32,minimum(length, metric[m])) + l0-1
+    SQJ = zeros(l-l0+1)
     n = 0
-    for k=[1,3,4,7,8,9,10,11,12,13,14,15,16,17,19,20]
-        sqj = sum(sqJ[m][k])[1:l]
+    for k=1:20
+        sqj = sum(sqJ[m][k])[l0:l]
         SQJ += sqj
         n += 1
         plot!(p,sqj,alpha=.5, linewidth=.5,label="",color=kc)
     end
     plot!(p, SQJ./n, linewidth=2, label=m[1:3],color=kc)
 end
+ylims!(1e-4, 1.)
 xlabel!("Number of Subspace Evaluations")
 title!("Feasibility For 20 Random Initial Guesses")
-savefig("$HOME/examples/tailless/xp_jun29/comparative_sqJ_june29_tailless.pdf")
+savefig("$HOME/examples/tailless/comparative_sqJ_jul21_tailless.pdf")
