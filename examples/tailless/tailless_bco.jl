@@ -1,13 +1,13 @@
 using Distributed
 using Pkg
 Pkg.activate("/home/adgboost/.julia/dev/BayesianCollaborativeOptimization/")
-addprocs(5, exeflags="--project=$(Base.active_project())")
+addprocs(7, exeflags="--project=$(Base.active_project())")
 
 
 @everywhere begin
     using BayesianCollaborativeOptimization
     HOME = pwd()
-    prefix = "$HOME/examples/tailless/xp_jul21/sqp"
+    prefix = "$HOME/examples/tailless/xp_jul21/bco"
     include("$HOME/examples/tailless/tailless.jl")
 
     Z0 =  [[0.65625, 0.46875, 0.09375, 0.46875, 0.28125],
@@ -36,7 +36,12 @@ addprocs(5, exeflags="--project=$(Base.active_project())")
             N_epochs=500_000, stepsize=10.,
             dropprob= 0.02, 
             αlr=0.97, 
-            nlayers=40, nparticles=6, ntrials=2)
+            nlayers=40, nparticles=6, ntrials=2, training_tol=1e-3, tol=1e-3)
+        # solver = BCO(Tailless(), 
+        #     N_epochs=500_000, stepsize=10.,
+        #     dropprob= 0.02, 
+        #     αlr=0.97, 
+        #     nlayers=40, nparticles=6, ntrials=2)
         # solver = SQP(Tailless(), tol=1e-3)
         # solver = ADMM(Tailless())
         options = SolveOptions(n_ite=30, ini_samples=1, 
@@ -46,7 +51,9 @@ addprocs(5, exeflags="--project=$(Base.active_project())")
     end
 end
 
-metrics = pmap(i->run(i),[2,5,6,9,18])
+# metrics = pmap(i->run(i),[2,5,6,9,18])
+# metrics = pmap(i->run(i),[7,9,11,13,16,4,14,20,18,17])
+metrics = pmap(i->run(i),[4,5,7,9,14,16,18])
 # metrics = pmap(i->run(i),1:20)
 
 
