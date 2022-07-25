@@ -150,8 +150,8 @@ end
         D           = Var(lb=-Inf, ub=0.),
         Cm          = Var(lb=0., ub=0.),
         Cm_4g       = Var(lb=0., ub=0.),
-        a1          = Var(lb=0., ub=1.),
-        a3          = Var(lb=0., ub=1.),
+        a1          = Var(lb=0., ub=0.),
+        a3          = Var(lb=0., ub=0.),
         circCon     = Var(lb=0., ub=0., N=ny),
         circCon_4g  = Var(lb=0., ub=0., N=ny),
         circCon_dal = Var(lb=0., ub=0., N=ny),
@@ -383,7 +383,7 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
     """
     z is a NamedTuple of global variables
     """
-    variables = mergevar((; xcg=aero_global.xcg, D=aero_global.D), aero_local)
+    variables = mergevar(aero_global, aero_local)
     idx = indexbyname(variables)
     idz = indexbyname(aero_global)
     idg = indexbyname(aero_output)
@@ -418,6 +418,8 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
         # Compute Loads ROM
         a1 = half_span / (pi * W) * (load_4g ⋅ sinθ_dθ)
         a3 = half_span / (pi * W) * (load_4g ⋅ sin3θ_dθ)
+        g[idg.a1] = (a1-x[idx.a1])
+        g[idg.a3] = (a3-x[idx.a3])
         
         # rescale
         x .-= b
@@ -425,10 +427,8 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
 
         # objective function
         g[idg.D]  =  (D-bz[idz.D]) / kz[idz.D] - x[idx.D]
-        g[idg.a1] = (a1-bz[idz.a1]) / kz[idz.a1]
-        g[idg.a3] = (a3-bz[idz.a3]) / kz[idz.a3]
-        f = ((x[idx.D]  - z[idz.D] )^2 + (g[idg.a1] - z[idz.a1] )^2+
-             (g[idg.a3] - z[idz.a3])^2 + (x[idx.xcg] - z[idz.xcg])^2) + max(0,g[idg.D])*1000
+        f = ((x[idx.D]  - z[idz.D] )^2 + (x[idx.a1] - z[idz.a1] )^2+
+             (x[idx.a3] - z[idz.a3])^2 + (x[idx.xcg] - z[idz.xcg])^2) + max(0,g[idg.D])*1000
         return f
     end
     Ng = len(aero_output)
@@ -438,7 +438,7 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
     x0[idx.D]   = z[idz.D]
     
     ipoptions["tol"] = 1e-12
-    ipoptions["max_iter"] = 150
+    ipoptions["max_iter"] = 500
     ipoptions["output_file"] = filename
     # ipoptions["linear_solver"] = "ma97"
     options = SNOW.Options(derivatives=ForwardAD(), solver=IPOPT(ipoptions))
@@ -455,8 +455,8 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
     fun(g, xopt)
     zs[idz.xcg] = xopt[idx.xcg]
     zs[idz.D]   = xopt[idx.D]
-    zs[idz.a1]  = g[idg.a1]
-    zs[idz.a3]  = g[idg.a3]
+    zs[idz.a1]  = xopt[idx.a1]
+    zs[idz.a3]  = xopt[idx.a3]
     
     viol = sum(max(0., lg[i]-g[i])+ max(0., g[i]-ug[i]) for i=1:Ng)
     # @assert (viol < 1e-6) "$viol"
