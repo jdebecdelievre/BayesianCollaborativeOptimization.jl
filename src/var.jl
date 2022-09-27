@@ -31,14 +31,14 @@ struct Var{N,ng}
     lb::Vector{Float64}
     ub::Vector{Float64}
     group::NTuple{ng,Symbol}
-    function Var(; lb, ub, ini=copy(lb), group::Union{Symbol,NTuple{ng,Symbol}} where ng =(), 
-                    N=max(length(ini),length(lb),length(ub)))
+    function Var(; lb, ub, ini=copy(lb), group::Union{Symbol,NTuple{ng,Symbol}}=(), 
+                    N=max(length(ini),length(lb),length(ub))) where ng
         ini, lb, ub = checkinput(ini, N), checkinput(lb, N), checkinput(ub, N)
         ini, lb, ub = promote(ini, lb, ub)
         if typeof(group) == Symbol
             group = (group,)
         end
-        ng = length(group)
+        # ng = length(group)
         @assert (all(ini <= ub) && (ini >= lb)) "Initial guess not within bounds: $lb <= $ini <= $ub"
         return new{N,ng}(ini,lb,ub,group)
     end
@@ -57,19 +57,25 @@ ini_scaled(V::NTV) = (ini(V) .- lower(V)) ./ (upper(V) .- lower(V)) # inefficien
 varnames(V::NTV) = collect(keys(V))
 len(v::Any) = length(v)
 len(::Var{N}) where N = N
-len(V::NTV) = isempty(V) ? 0 : sum(len(v) for v=V)
+len(V::NTV) = sum(len,V,init=0)
 len(V::NTV, i::Int64) = len(V[i])
-len(V::NTV, idx::UnitRange) = isempty(idx) ? 0 : sum(len(V[i]) for i=idx)
-index(V::NTV) = (len(V)>1) ? (1:len(V)) : 1
+len(V::NTV, idx::UnitRange) = sum(i->len(V[i]),idx,init=0)
+# index(V::NTV) = (len(V)>1) ? (1:len(V)) : 1
 
-function index(V::NTV, idx::Int64) 
-    L = len(V,1:idx-1)
-    if (len(V[idx])>1)
-        return ((L+1):(L+len(V[idx])))
-    else
-        return 1+L
-    end
-end
+# function index(V::NTV, idx::Int64) 
+#     L = len(V,1:idx-1)
+#     if (len(V[idx])>1)
+#         return ((L+1):(L+len(V[idx])))
+#     else
+#         return 1+L
+#     end
+# end
+
+index(V::NTV) = 1:len(V)
+index(V::NamedTuple{Name,Tuple{Var{1,ng}}} where {Name,ng}) = 1 # case where len(V) = 1
+index(v::Var{1},L::Int64=0) = 1+L
+index(v::Var{N},L::Int64=0) where N = (L+1):(L+N)
+index(V::NTV, idx::Int64) = index(V[idx], len(V,1:idx-1))
 
 function index(V::NTV, group::Symbol) 
     i = 0
@@ -90,7 +96,15 @@ z_aero = z_all[idz.aero]
 z_all[idz.aero] .= z_aero (julia will automatically use a view of z_all to avoid copying)
 """
 const IndexMap{fields,nfields} = NamedTuple{fields,NTuple{nfields,Vector{Int64}}}
-indexbyname(V::NTV) = NamedTuple(((keys(V)[i], index(V,i)) for i=1:length(V)))
+
+addL(idx::UnitRange{Int64}, L::Int64) = (idx.start + L):(idx.stop + L)
+addL(idx::Int64, L::Int64) = idx+L
+function indexbyname(V::NTV)
+    idx = map(index,V)
+    L = NamedTuple(((kv,len(V,1:i-1)) for (i,kv)=enumerate(keys(V))))
+    return map(addL, idx, L)
+end
+
 function indexbygroup(V::NTV) 
     groups = Tuple(unique(vcat((collect(v.group) for v=V)...))) # TODO: find a better way to concatenate tuples!
     inds = [index(V,g) for g=groups]
@@ -106,12 +120,46 @@ function subset(V::NTV, group::Symbol)
     return NamedTuple{k}(v)
 end
 
-unpack(x::Vector, idxbname::NamedTuple) = map(i->x[i], idxbname)
+unpack(x::Vector, idx::Int64) = x[idx]
+unpack(x::Vector, idx::UnitRange{Int64}) = view(x,idx)
+unpack(x::Vector, idxbname::NamedTuple) = map(i->unpack(x,i), idxbname)
+
+views(x::Vector, idxbname::NamedTuple)  = map(i->view(x,i), idxbname)
 unscale(x::Real, v::Var{1}) = x * (v.ub[1] - v.lb[1]) + v.lb[1]
 unscale(x::SVector{N,<:Real}, v::Var{N}) where N = SA[(x[i] * (v.ub[i] - v.lb[i]) + v.lb[i] for i=1:N)...]
 unscale(x::Vector{<:Real}, v::Var{N}) where N = [x[i] * (v.ub[i] - v.lb[i]) + v.lb[i] for i=1:N]
-unscale(Xv::NamedTuple, V::NamedTuple)  = map(unscale, Xv,V)
+unscale(Xv::NamedTuple, V::NTV)  = map(unscale, Xv,V)
 unscale_unpack(x::Vector{<:Real}, idxbname::NamedTuple, V::NamedTuple) = map((i,v)->unscale(x[i],v), idxbname,V)
+# function unscale_unpack!(v::NamedTuple, x::Vector{<:Real}, idxbname::NamedTuple, V::NamedTuple)
+#     for i = eachindex(V) 
+#         @. v[i] = (x[idxbname[i]] - V[i].lb)/(V[i].ub - V[i].lb)
+#     end
+# end
+
+function unscale!(x::Vector{<:Real}, V::NTV)
+    idx = 1
+    for v in V
+        for i=eachindex(v.ini)
+            x[idx] = x[idx] * (v.ub[i]-v.lb[i]) + v.lb[i]
+            idx += 1
+        end
+    end
+    return x
+end
+unscale(x::Vector{<:Real}, V::NTV) = unscale!(copy(x), V)
+
+function scale!(x::Vector{<:Real}, V::NTV)
+    idx = 1
+    for v in V
+        for i=eachindex(v.ini)
+            x[idx] = (x[idx]-v.lb[i]) / (v.ub[i]-v.lb[i])
+            idx += 1
+        end
+    end
+    return x
+end
+scale(x::Vector{<:Real}, V::NTV) = scale!(copy(x), V)
+
 
 scale(x::Real, v::Var{1}) = (x - v.lb[1]) / (v.ub[1] - v.lb[1])
 scale(x::SVector{N,<:Real}, v::Var{N}) where N = SA[((x[i] - v.lb[i]) * (v.ub[i] - v.lb[i]) for i=1:N)...]
@@ -174,4 +222,25 @@ function setvar!(Z, z, idZ, idz)
             Z[iZ] = z[iz]
         end
     end
+end
+
+"""
+Get active constraints and violations
+"""
+function getactive(x::AbstractVector, V::NTV, tol::Float64=1e-6)
+    idx = 1
+    violation = 0.
+    for (k,v) in pairs(V)
+        for i=eachindex(v.ini)
+            if (x[idx] < v.lb[i]+tol)
+                println("$k (elt $i, index $idx) is active: $(x[idx]) ≤ $(v.lb[i])")
+                violation += max(0., v.lb[i] - x[idx])
+            elseif (x[idx] > v.ub[i]-tol)
+                println("$k (elt $i, index $idx) is active: $(x[idx]) ≥ $(v.ub[i])")
+                violation += max(0., x[idx] - v.ub[i])
+            end
+            idx += 1
+        end
+    end
+    println("Sum of all violations: $violation")
 end

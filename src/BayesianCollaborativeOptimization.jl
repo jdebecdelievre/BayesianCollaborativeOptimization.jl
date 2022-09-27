@@ -21,7 +21,7 @@ using TimerOutputs
 
 include("var.jl")
 export Var, ini, lower, upper, varnames, len, index, indexbyname, indexbygroup, len, mergevar, ini_scaled, get_scaled
-export unscale_unpack, unpack, getvar!, scale, subset
+export unscale_unpack, unscale_unpack!, views, unpack, getvar!, scale, subset
 
 include("problem.jl")
 export AbstractProblem, indexmap, objective, discipline_names, indexmap, subspace, number_shared_variables, objective_lowerbound, objective_upperbound, objective_opt
