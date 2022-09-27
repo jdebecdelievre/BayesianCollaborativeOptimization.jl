@@ -37,11 +37,6 @@ addprocs(7, exeflags="--project=$(Base.active_project())")
             dropprob= 0.02, 
             αlr=0.97, 
             nlayers=40, nparticles=6, ntrials=2, training_tol=1e-3, tol=1e-3)
-        # solver = BCO(Tailless(), 
-        #     N_epochs=500_000, stepsize=10.,
-        #     dropprob= 0.02, 
-        #     αlr=0.97, 
-        #     nlayers=40, nparticles=6, ntrials=2)
         # solver = SQP(Tailless(), tol=1e-3)
         # solver = ADMM(Tailless())
         options = SolveOptions(n_ite=30, ini_samples=1, 

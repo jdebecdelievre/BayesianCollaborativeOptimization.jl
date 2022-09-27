@@ -1,7 +1,7 @@
 using Distributed
 using Pkg
 Pkg.activate("/home/adgboost/.julia/dev/BayesianCollaborativeOptimization/")
-addprocs(5, exeflags="--project=$(Base.active_project())")
+addprocs(7, exeflags="--project=$(Base.active_project())")
 
 
 @everywhere begin
@@ -36,7 +36,7 @@ addprocs(5, exeflags="--project=$(Base.active_project())")
             N_epochs=500_000, stepsize=10.,
             dropprob= 0.02, 
             αlr=0.97, 
-            nlayers=40, nparticles=6, ntrials=2)
+            nlayers=40, nparticles=6, ntrials=2, training_tol=1e-3, tol=1e-3)
         # solver = SQP(Tailless(), tol=1e-3)
         # solver = ADMM(Tailless())
         options = SolveOptions(n_ite=30, ini_samples=1, 
@@ -46,12 +46,4 @@ addprocs(5, exeflags="--project=$(Base.active_project())")
     end
 end
 
-metrics = pmap(i->run(i),[2,5,6,9,18])
-# metrics = pmap(i->run(i),1:20)
-
-
-
-# using JLD2
-# HOME = pwd()
-# savedir = "$HOME/examples/tailless"
-# save("$savedir/metrics.jld2", "metrics", metrics)   
+metrics = pmap(i->run(i),1:20)
