@@ -244,3 +244,92 @@ function getactive(x::AbstractVector, V::NTV, tol::Float64=1e-6)
     end
     println("Sum of all violations: $violation")
 end
+
+"""
+Show results in table
+"""
+results_summary(V::NTV, values::NTV; sig::Int64=2, units=map(t->"", V), description=map(t->"", V)) = results_summary(stderr, V, values, sig=sig, units=units, description=description)
+function results_summary(io::IO, V::NTV, values::NTV; sig::Int64=2, units=map(t->"", V), description=map(t->"", V))
+    
+    # Get string of value
+    vals = map(values) do v
+        if isa(v, Number) 
+        return @sprintf "%.2f" v
+        else
+            str = prod((@sprintf "%.2f," vv) for vv=v)
+            return "[$(str[1:end-1])]"
+        end
+    end
+
+    # Get active bound
+    idx = 1
+    tol = 1e-6
+    function isactive(variable, value)
+        n = len(variable)
+        str = ""
+        for i=eachindex(variable.ini)
+            if (value[idx] < variable.lb[i]+tol)
+                if n == 1
+                    return "lower"
+                else
+                    str*= "lower $i, "
+                end
+            elseif (value[idx] > variable.ub[i]-tol)
+                if n == 1
+                    return "upper"
+                else
+                    str*= "upper $i, "
+                end
+            end
+        end
+        strip(str,',')
+        return str
+    end
+    act = map(isactive,V,values)
+
+    # Create string
+    base = """
+    \\begin{tabular}{|c|c|c|c|c|}
+    \\hline
+    {\\bf Design Variables} & {Symbol} & {Unit} & {Value} & {Active Bound} \\\\
+    \\hline 
+    """
+    for (i,v)=enumerate(keys(values))
+        base *= "$(description[v]) & \$\\$(v)\$ & \\si{$(units[v])} & $(vals[v]) & $(act[v])\\\\ \n"
+    end
+    base *= "\\hline \n \\end{tabular} \n \\vspace{3cm}"
+
+    # Print and return
+    println(io, base)
+    return base
+end
+
+variables_summary(V::NTV; sig::Int64=2, units=map(t->"", V), description=map(t->"", V))    = variables_summary(stderr, V, sig=sig, units=units, description=description)
+function variables_summary(io::IO, V::NTV; sig::Int64=2, units=map(t->"", V), description=map(t->"", V))    
+    # Get string of value
+    val = map(V) do v
+        if len(v) == 1
+            return ((@sprintf "%.2f" v.lb[1]), (@sprintf "%.2f" v.ub[1]))
+        else
+            lb = prod((@sprintf "%.2f," vv) for vv=v.lb)
+            ub = prod((@sprintf "%.2f," vv) for vv=v.ub)
+            return ("[$(lb[1:end-1])]","[$(ub[1:end-1])]")
+        end
+    end
+
+    # Create string
+    base = """
+    \\begin{tabular}{|c|c|c|c|c|}
+    \\hline
+    {\\bf Design Variables} & {Symbol} & {Unit} & {Lower Bound} & {Upper Bound} \\\\
+    \\hline 
+    """
+    for (i,v)=enumerate(keys(V))
+        base *= "$(description[v]) & \$\\$(v)\$ & \\si{$(units[v])} & $(val[v][1]) & $(val[v][2])\\\\ \n"
+    end
+    base *= "\\hline \n \\end{tabular} \n \\vspace{3cm}"
+
+    # Print and return
+    println(io, base)
+    return base
+end

@@ -17,7 +17,7 @@ using CSV
 using Parameters
 using NLopt
 using TimerOutputs
-
+using Printf, LaTeXStrings
 
 include("var.jl")
 export Var, ini, lower, upper, varnames, len, index, indexbyname, indexbygroup, len, mergevar, ini_scaled, get_scaled
