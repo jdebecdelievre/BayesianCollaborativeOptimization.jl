@@ -1,13 +1,13 @@
 using Distributed
 using Pkg
 Pkg.activate("/home/adgboost/.julia/dev/BayesianCollaborativeOptimization/")
-addprocs(7, exeflags="--project=$(Base.active_project())")
+addprocs(6, exeflags="--project=$(Base.active_project())")
 
 
 @everywhere begin
     using BayesianCollaborativeOptimization
     HOME = pwd()
-    prefix = "$HOME/examples/tailless/xp_jul21/bco"
+    prefix = "$HOME/examples/tailless/xp_jul25/bco1"
     include("$HOME/examples/tailless/tailless.jl")
 
     Z0 =  [[0.65625, 0.46875, 0.09375, 0.46875, 0.28125],
@@ -46,10 +46,7 @@ addprocs(7, exeflags="--project=$(Base.active_project())")
     end
 end
 
-# metrics = pmap(i->run(i),[2,5,6,9,18])
-# metrics = pmap(i->run(i),[7,9,11,13,16,4,14,20,18,17])
-metrics = pmap(i->run(i),[4,5,7,9,14,16,18])
-# metrics = pmap(i->run(i),1:20)
+metrics = pmap(i->run(i),1:20)
 
 
 

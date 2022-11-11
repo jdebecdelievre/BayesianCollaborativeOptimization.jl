@@ -73,14 +73,14 @@ hline!(p, [tailless_optimum.R], linestyle=:dash, label="optimum")
 ylims!(lb,ub)
 xlabel!("Number of Subspace Evaluations")
 title!("Objective Function For 20 Random Initial Guesses")
-savefig("$HOME/examples/tailless/comparative_R_jul21_tailless.pdf")
+# savefig("$HOME/examples/tailless/comparative_R_jul21_tailless.pdf")
 
 ##
 method = ["bco","sqp"]
 leg = ["Bayesian CO", "SQP"]
 using Plots.PlotMeasures
 p = plot(yaxis=:log10)
-ylabel!(p, "Range (nautical miles)")
+ylabel!(p, L"|R-R^*|/(R^{ub}-R^{lb})")
 lb = global_variables.R.lb[1]
 ub = global_variables.R.ub[1]
 for (kc,m)=enumerate(method)
@@ -96,10 +96,10 @@ for (kc,m)=enumerate(method)
     end
     plot!(p, O./n, linewidth=2, label=leg[kc],color=kc)
 end
-hline!(p, [tailless_optimum.R], linestyle=:dash, label="optimum")
+# hline!(p, [tailless_optimum.R], linestyle=:dash, label="optimum")
 ylims!(1e-3, 0.5)
 xlabel!("Number of Subspace Evaluations")
-title!("Objective Function For 20 Random Initial Guesses")
+title!("Objective Error For 20 Random Initial Guesses")
 savefig("$HOME/examples/tailless/comparative_dR_jul21_tailless.pdf")
 
 ##
@@ -121,4 +121,4 @@ end
 ylims!(1e-4, 1.)
 xlabel!("Number of Subspace Evaluations")
 title!("Feasibility For 20 Random Initial Guesses")
-savefig("$HOME/examples/tailless/comparative_sqJ_jul21_tailless.pdf")
+# savefig("$HOME/examples/tailless/comparative_sqJ_jul21_tailless.pdf")
