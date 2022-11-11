@@ -1,27 +1,22 @@
 module BayesianCollaborativeOptimization
 
-using BenchmarkTools, LinearAlgebra, Plots
+using LinearAlgebra
 using StaticArrays
-using FiniteDiff
-using Random
 using StatsBase
-using Printf
-using DataFrames
-using JLD2
+using Random
 using Sobol
-using Plots
-ENV["GKSwstype"] = "100"
-using Evolutionary
-using HouseholderNets
-using CSV
-using Parameters
-using NLopt
-using TimerOutputs
-using Printf, LaTeXStrings
 
-include("var.jl")
-export Var, ini, lower, upper, varnames, len, index, indexbyname, indexbygroup, len, mergevar, ini_scaled, get_scaled
-export unscale_unpack, unscale_unpack!, views, unpack, getvar!, scale, subset
+using JLD2
+using CSV
+
+using Evolutionary
+using NLopt # Possible improvement: write my own quasi-Newton for unconstrained EIc maximization
+
+using HouseholderNets
+using Parameters
+using TimerOutputs
+using Printf
+using OptimUtils
 
 include("problem.jl")
 export AbstractProblem, indexmap, objective, discipline_names, indexmap, subspace, number_shared_variables, objective_lowerbound, objective_upperbound, objective_opt
@@ -32,10 +27,11 @@ export get_metrics, datacheck
 include("solve.jl")
 export solve, load_data, save_data, trim_data!, SolveOptions
 
-include("sqp.jl")
+import SNOW # Possible improvement: replace by Ipopt direct wrapper to avoid SNOW dependencies
+include("baselines/sqp.jl")
 export SQP
 
-include("admm.jl")
+include("baselines/admm.jl")
 export ADMM
 
 include("bco.jl")

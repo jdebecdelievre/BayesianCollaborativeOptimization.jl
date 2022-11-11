@@ -14,7 +14,7 @@ function learn_feasible_set(options, data, savedir)
     sgd = SGD(lr=lr, αlr=αlr, N_epochs=N_epochs, logfreq=logfreq, bounds=bounds, dropprob=options.dropprob)
     optim = [resetopt(sgd) for _=1:nparticles*ntrials]
     trainingcaches = [TrainingCacheGrad(net) for net in ensemble]
-    p = plot()
+    # p = plot()
 
     # Prep data
     fsb = data.sqJ .< options.training_tol 
@@ -44,8 +44,8 @@ function learn_feasible_set(options, data, savedir)
         while sqJ_grad_update(X, Y, ∇Y, fsb, cache, opt, verbose=false); end
         
         # save training history
-        hist = historydf(opt.hist)
-        plot!(p,hist.loss .+ eps(), yscale=:log10, label="$np")
+        hist = historydf(opt.hist,NamedTuple)
+        # plot!(p,hist.loss .+ eps(), yscale=:log10, label="$np")
         CSV.write("$savedir/traininghistory$np.csv", hist)
         
         # Break if needed
@@ -67,10 +67,10 @@ function learn_feasible_set(options, data, savedir)
         ensemble = vcat(ensemble,([HouseholderNets.resampleinactive(X, ensemble[np], bounds, optim[np].rng) for i=1:nresample] for np=1:nparticles)...)
     end
     
-    df = DataFrame(X=X, Y=Y, fsb=fsb)
+    df = (; X, Y, fsb)
     CSV.write("$savedir/trainingdata.csv", df)
     save_ensemble("$savedir/ensemble.jld2", ensemble)
-    savefig(p, "$savedir/trainingcurves.pdf")
+    # savefig(p, "$savedir/trainingcurves.pdf")
     return ensemble
 end
 

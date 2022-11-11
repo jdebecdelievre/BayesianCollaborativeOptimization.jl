@@ -1,7 +1,6 @@
 using BayesianCollaborativeOptimization
 
-HOME = pwd()
-include("$HOME/examples/tailless/tailless.jl")
+include(joinpath(@__DIR__,"tailless.jl"))
 ##
 
 solver = ADMM(Tailless(), ρ=.1)

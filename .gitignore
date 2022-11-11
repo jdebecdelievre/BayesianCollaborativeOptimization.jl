@@ -1,5 +1,4 @@
-/Manifest.toml
-data
+**/Manifest.toml
 tmp
 *.out
 xp*
@@ -7,3 +6,4 @@ xp*
 **/*.pdf
 **/*.jld2
 **/*.txt
+**/.DS_Store

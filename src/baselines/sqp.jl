@@ -1,4 +1,3 @@
-import SNOW
 """
 Sequential quadratic programming solution of CO
 """
