@@ -20,5 +20,5 @@ Methods that must be overridden by each concrete subtype
 discipline_names(::AbstractProblem) = throw("unimplemented")
 number_shared_variables(::AbstractProblem) = throw("unimplemented")
 indexmap(::AbstractProblem) = throw("unimplemented")
-subspace(pb::AbstractProblem, dis::Val{T} where T, z::AbstractArray, filename::String) = throw("subspace not implemented for discipline $dis of $pb.")
+subspace(pb::AbstractProblem, discipline, z::AbstractArray, filename::String) = throw("subspace not implemented for discipline $discipline of $pb.")
 
