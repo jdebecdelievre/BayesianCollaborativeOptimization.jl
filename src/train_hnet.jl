@@ -44,7 +44,7 @@ function learn_feasible_set(options, data, savedir)
         while sqJ_grad_update(X, Y, ∇Y, fsb, cache, opt, verbose=false); end
         
         # save training history
-        hist = historydf(opt.hist,NamedTuple)
+        hist = historydf(opt.hist)
         # plot!(p,hist.loss .+ eps(), yscale=:log10, label="$np")
         CSV.write("$savedir/traininghistory$np.csv", hist)
         
