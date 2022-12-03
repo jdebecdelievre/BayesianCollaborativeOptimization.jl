@@ -92,7 +92,7 @@ function BayesianCollaborativeOptimization.subspace(::Sellar, ::Val{:d1},  z0::A
     
     options = SNOW.Options(derivatives=SNOW.UserDeriv(), solver=SNOW.IPOPT(ipoptions), sparsity=SNOW.DensePattern())
     xopt, fopt, info = SNOW.minimize(fun, [copy(z0);copy(z0)], Ng, lx, ux, lg, ug, options)
-    return copy(xopt)[6:10]
+    return copy(xopt)[6:10], false
 end
 
 function BayesianCollaborativeOptimization.subspace(::Sellar, ::Val{:d2},  z0::AbstractArray, filename::String)
@@ -140,7 +140,7 @@ function BayesianCollaborativeOptimization.subspace(::Sellar, ::Val{:d2},  z0::A
 
     options = SNOW.Options(derivatives=SNOW.UserDeriv(), solver=SNOW.IPOPT(ipoptions))
     xopt, fopt, info = SNOW.minimize(fun, [copy(z0);copy(z0)], Ng, lx, ux, lg, ug, options)
-    return copy(xopt)[6:10]
+    return copy(xopt)[6:10], false
 end
 
 function sellar_aao(z0)

@@ -69,7 +69,18 @@ function solve(solver::AbstractSolver, options::SolveOptions;
             @timeit to "ite0" begin
             for (i,z)=enumerate(Z)
                 D.Z[i]  .= z[idz[d]]
-                @timeit to "$d" (D.Zs[i] .= subspace(problem, Val(d), D.Z[i], "$savedir/eval/$d/0_$i.txt"))
+                @timeit to "$d" (out = subspace(problem, Val(d), D.Z[i], "$savedir/eval/$d/0_$i.txt"))
+                zs, failed = out
+                j = 1
+                while (j<4) && failed # retry new random points if optimization fails
+                    # Future improvement: integrate failed points as infeasible
+                    print(io, "Initial evaluation failed $j/3 for discipline $d")
+                    z = next!(Sz)
+                    D.Z[i]  .= z[idz[d]]
+                    @timeit to "$d" (zs, failed = subspace(problem, Val(d), D.Z[i], "$savedir/eval/$d/0_$i.txt"))
+                    j += 1
+                end
+                D.Zs[i] .= zs 
                 D.sqJ[i] = norm(D.Z[i] .- D.Zs[i])
                 D.fsb[i] = (D.sqJ[i]<tol)
             end
@@ -101,12 +112,17 @@ function solve(solver::AbstractSolver, options::SolveOptions;
 
         # B/ Evaluate and save new point
         for d=disciplines
-            @timeit to "$d" (zs = subspace(problem, Val(d), Zd[d], "$savedir/eval/$d/$(ite).txt"))
+            @timeit to "$d" (out = subspace(problem, Val(d), Zd[d], "$savedir/eval/$d/$(ite).txt"))
+            zs, failed = out
             sqJd = norm(zs-z[idz[d]]) # z[idz.d] =/= Zd[d] for ADMM. Really the infeasibility should be measured against z[idz.d]
             # sqJd = norm(zs-Zd[d])
             new_data = (;
                 Z=Zd[d], Zs=zs, sqJ=sqJd, fsb=(sqJd<tol), ite=ite
             )
+            if failed # Future improvement: integrate failed points as infeasible
+                print(io, "Evaluation failed for discipline $d. Point ignored. Networks will still be retrained.")
+                continue
+            end
             map((D,nd)->push!(D,nd), data[d], new_data)
             save_data("$savedir/$d.jld2",data[d])
         end
