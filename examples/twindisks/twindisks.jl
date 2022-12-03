@@ -23,8 +23,8 @@ BayesianCollaborativeOptimization.subspace(::TwinDisks, ::Val{:A}, z::AbstractAr
 BayesianCollaborativeOptimization.subspace(::TwinDisks, ::Val{:B}, z::AbstractArray,s::String) = (z - ([(z[1]-cB[1]), (z[2]-cB[2])] / norm([(z[1]-cB[1]), (z[2]-cB[2])])).*max(0, sqrt((z[1]-cB[1])^2 +(z[2]-cB[2])^2)-.4)), false
 BayesianCollaborativeOptimization.objective_opt(::TwinDisks) = [opt[1]]
 
+##
 
-#=
 sqp = SQP(TwinDisks(), λ=1., tol=1e-6)
 options = SolveOptions(n_ite=25, ini_samples=1, warm_start_sampler=100)
 # solve(solver, options)
@@ -41,7 +41,7 @@ data = map(load_data, ddir);
 ##
 options = SolveOptions(n_ite=15, ini_samples=1)
 bco = BCO(TwinDisks(), N_epochs=100_000, stepsize=1.,tol=1e-6)
-# solve(solver, options)
+solve(bco, options)
 ddir = (; A="xpu/A.jld2", B="xpu/B.jld2")
 data = map(load_data, ddir);
 ##
@@ -56,7 +56,7 @@ for i=0:19
     options = SolveOptions(n_ite=25, ini_samples=1, warm_start_sampler=i, savedir="$savedir/xpu$i/admm/")
     solve(adm, options)
 end
-=#
+
 ## Regular CO
 function solve_co(z0, neval=100)
     k = 150.
