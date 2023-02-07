@@ -1,4 +1,5 @@
 using BayesianCollaborativeOptimization
+using OptimUtils
 using LinearAlgebra
 import SNOW
 using JLD2

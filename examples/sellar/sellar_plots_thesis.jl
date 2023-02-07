@@ -1,8 +1,12 @@
+using Pkg
+Pkg.activate("$(@__DIR__)/../.")
+
 using BayesianCollaborativeOptimization
 using LinearAlgebra
 using Statistics
 using JLD2
 using Plots
+using CSV
 HOME = pwd()
 include("$HOME/examples/sellar/sellar.jl")
 sl = Sellar()
