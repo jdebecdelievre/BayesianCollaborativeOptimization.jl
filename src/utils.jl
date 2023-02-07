@@ -11,6 +11,11 @@ function get_metrics(mdl::AbstractProblem, savedir::String)
     else
         obj, sqJ = load("$savedir/data.jld2","obj","sqJ")
     end
+
+    if std(map(length,sqJ)) > .5
+        println("Model at $savedir has an unequal number of entries in sqJ: $(map(length, sqJ))",)
+        return similar(obj), obj, similar(obj), sqJ
+    end
     metric = [abs.(obj .- f) / (ub_opt - lb_opt) + sum(sqJ) for f=fopt]
     i = [argmin([m[k] for m=metric]) for k=1:length(obj)]
     metric = [metric[i[k]][k] for k=1:length(obj)]
