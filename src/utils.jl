@@ -79,4 +79,4 @@ function avg_zstar(data::NamedTuple{disciplines}, row::Int64, idz::NamedTuple{di
     end
     @. z = z / nid
     return z
-end
+end 

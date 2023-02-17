@@ -1,3 +1,6 @@
+using Pkg
+Pkg.activate("$(@__DIR__)/../.")
+
 using DataFrames
 using CSV
 

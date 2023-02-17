@@ -2,6 +2,7 @@ using LinearAlgebra
 using BayesianCollaborativeOptimization
 using Snopt
 using SNOW
+using OptimUtils
 import Parameters: @consts
 
 #### ---- Constant Inputs ----
@@ -267,7 +268,7 @@ function performance(D, Wfuel)
 end
 
 #### ---- All-at-once Solution ----
-function solve_aao()
+function solve_aao(z_ini=nothing)
     @assert keys(global_variables)[1] == :R
 
     variables   = mergevar((; xcg=global_variables.xcg, R=global_variables.R, a1=global_variables.a1, a3=global_variables.a3), 
@@ -277,8 +278,9 @@ function solve_aao()
     idg         = indexbyname(constraints)
     k           = upper(variables) - lower(variables)
     b           = lower(variables)
-
+    Neval = 0
     function aao(g, x)
+        Neval += 1
         # unscale
         x .*= k
         x .+= b
@@ -318,6 +320,12 @@ function solve_aao()
     Nx = len(variables)
 
     x0 = ini_scaled(variables)  # starting point
+    if !(z_ini isa Nothing)
+        x0[idx.R] = z_ini[1]
+        x0[idx.a1] = z_ini[3]
+        x0[idx.a3] = z_ini[4]
+        x0[idx.xcg] = z_ini[5]
+    end
     # for k=keys(idx)
     #     x0[idx[k]] = tailless_optimum[k]
     # end
@@ -329,7 +337,8 @@ function solve_aao()
     lg = lower(constraints)
     ug = upper(constraints) # upper bounds on g
     ug[idg.xcg] = 0.
-    options = SNOW.Options(derivatives=SNOW.ForwardAD(), solver=SNOW.IPOPT())
+    options = SNOW.Options(derivatives=SNOW.ForwardAD(), solver=SNOW.SNOPT())
+    # options = SNOW.Options(derivatives=SNOW.ForwardAD(), solver=SNOW.IPOPT())
 
     xopt, fopt, info = minimize(aao, x0, Ng, lx, ux, lg, ug, options)
 
@@ -345,8 +354,9 @@ function solve_aao()
     for k = keys(c)
         println("$k: $(c[k])")
     end
+    println("Neval = $Neval")    
 
-    return v
+    return v, Neval
 end
 
 #### ---- Solution ----
@@ -388,8 +398,9 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
     # unscale z
     kz = upper(aero_global) - lower(aero_global) 
     bz = lower(aero_global)
-
+    Neval = 0
     function fun(g, x)
+        Neval += 1
         g.= 0.
 
         # unscale
@@ -422,7 +433,7 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
         # g[idg.a1] = (a1-bz[idz.a1]) / kz[idz.a1]
         # g[idg.a3] = (a3-bz[idz.a3]) / kz[idz.a3]
         f = ((x[idx.D]  - z[idz.D] )^2 + (x[idx.a1] - z[idz.a1] )^2+
-             (x[idx.a3] - z[idz.a3])^2 + (x[idx.xcg] - z[idz.xcg])^2) + max(0,g[idg.D])*1000
+             (x[idx.a3] - z[idz.a3])^2 + (x[idx.xcg] - z[idz.xcg])^2)
         return f
     end
     Ng = len(aero_output)
@@ -436,15 +447,18 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
     ipoptions["max_iter"] = 500
     ipoptions["output_file"] = filename
     # ipoptions["linear_solver"] = "ma97"
-    options = SNOW.Options(derivatives=ForwardAD(), solver=IPOPT(ipoptions))
+    # options = SNOW.Options(derivatives=ForwardAD(), solver=IPOPT(ipoptions))
+    options = SNOW.Options(derivatives=SNOW.ForwardAD(), solver=SNOW.SNOPT())
     
     g = zeros(Ng)  # starting point
     lx = zeros(Nx) # lower bounds on x
     ux = ones(Nx) # upper bounds on x
     lg = lower(aero_output)
     ug = upper(aero_output) # upper bounds on g
+    t = time()
     xopt, fopt, info = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
-    
+    t = time() - t
+
     # Compute z star
     zs          = copy(z)
     fun(g, xopt)
@@ -454,11 +468,19 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:aero}, z:
     zs[idz.a3]  = xopt[idx.a3]
     
     viol = sum(max(0., lg[i]-g[i])+ max(0., g[i]-ug[i]) for i=1:Ng)
-    # @assert (viol < 1e-6) "$viol"
-    if viol > 1e-6 
+    fail = (viol > 1e-6)
+    if viol > 1e-5
         println("constraint violation $filename: $viol")
     end
-    return zs
+    open(filename, "w") do io
+        write(io, 
+        """Neval: $Neval
+        Nfreebies: 0
+        time: $t
+        viol: $viol
+        """)
+    end;
+    return zs, fail
 end
 
 function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z::AbstractArray, filename::String,
@@ -474,7 +496,9 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z
     kz = upper(global_variables) - lower(global_variables) 
     bz = lower(global_variables)
     
+    Neval = 0
     function fun(g, x)
+        Neval += 1
         # unscale
         x .*= k
         x .+= b
@@ -510,12 +534,15 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z
     ipoptions["tol"] = 1e-8
     ipoptions["max_iter"] = 500
     ipoptions["output_file"] = filename
-    options = SNOW.Options(derivatives=ForwardAD(), solver=IPOPT(ipoptions))
+    # options = SNOW.Options(derivatives=ForwardAD(), solver=IPOPT(ipoptions))
+    options = SNOW.Options(derivatives=SNOW.ForwardAD(), solver=SNOW.SNOPT())
     lx = zeros(Nx) # lower bounds on x
     ux = ones(Nx) # upper bounds on x
     lg = lower(struc_output)
     ug = upper(struc_output) # upper bounds on g
+    t = time()
     xopt, fopt, info, out = minimize(fun, x0, Ng, lx, ux, lg, ug, options)
+    t = time() - t
 
     # pack zs
     g = zeros(Ng) 
@@ -527,8 +554,18 @@ function BayesianCollaborativeOptimization.subspace(::Tailless, ::Val{:struc}, z
     zs[idz.a3]  = xopt[idx.a3]
     zs[idz.R]   = xopt[idx.R]
     zs[idz.xcg] = g[idg.xcg]
-    
+
+
+    # save insights
     viol = sum(max(0., lg[i]-g[i])+ max(0., g[i]-ug[i]) for i=1:Ng)
-    # @assert (viol < 1e-6) "$viol"
-    return zs
+    fail = (viol > 1e-5)
+    open(filename, "w") do io
+        write(io, 
+        """Neval: $Neval
+        Nfreebies: 0
+        time: $t
+        viol: $viol
+        """)
+    end
+    return zs, fail
 end

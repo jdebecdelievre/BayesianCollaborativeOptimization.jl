@@ -74,7 +74,7 @@ function solve(solver::SQP, options::SolveOptions;
             push!(data[d].Z, copy(Zd[d]))
             
             # Subspace projection
-            Zs[d] .= subspace(solver.problem, Val(d), Zd[d], "$savedir/eval/$(d)_$ite.txt")
+            Zs[d] .= subspace(solver.problem, Val(d), Zd[d], "$savedir/eval/$(d)_$ite.txt")[1]
             push!(data[d].Zs, copy(Zs[d]))
             
             # Gradient calc

@@ -4,6 +4,7 @@ using BayesianCollaborativeOptimization
 using Parameters
 using Snopt
 using SNOW
+using OptimUtils
 # Adapted in July 2022 from a Matlab code written by Prof. Ilan Kroo
 
 ### Analysis function ###
@@ -189,7 +190,9 @@ BayesianCollaborativeOptimization.objective_opt(::UAVmarathon) = [zopt[1]]
 
 
 function BayesianCollaborativeOptimization.subspace(::UAVmarathon, ::Val{:wing}, z0::AbstractArray, filename::String)
+    Neval= 0
     function fun(g,z)
+        Neval += 1
         v = unscale_unpack(z, idz_d.wing, wing_variables)
         # D, CL, LD, M_wing, M_total = WingModel(13.7133, 0.397, 2.7574, 0.2434158) 
         D, CL, LD, M_wing, M_total = WingModel(v.V, v.S, v.b, v.Mbat) 
@@ -206,12 +209,25 @@ function BayesianCollaborativeOptimization.subspace(::UAVmarathon, ::Val{:wing},
     # options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=SNOW.IPOPT(ipoptions))
     options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=SNOW.SNOPT())
     x0  = zeros(Nx) .+ 1/2
+    t = time()
     xopt, fopt, info = SNOW.minimize(fun, x0, Ng, lx, ux, lg, ug, options)
-    return xopt[1:3]
+    t = time()-t
+    
+    open(filename, "w") do io
+        write(io, 
+        """Neval: $Neval
+        Nfreebies: 0
+        time: $t
+        """)
+    end
+
+    return xopt[1:3], false
 end
 
 function BayesianCollaborativeOptimization.subspace(::UAVmarathon, ::Val{:prop}, z0::AbstractArray, filename::String)
+    Neval = 0
     function fun(g,z)
+        Neval += 1
         v = unscale_unpack(z, idz_d.prop, prop_variables)
         Mbattery_rqd,FlightTime,RPM,T,Q,Pin,I,etap,etam,eta, J_UI = PropulsionModel(v.V, v.volts)
         g[1] = (v.D - T)
@@ -228,6 +244,53 @@ function BayesianCollaborativeOptimization.subspace(::UAVmarathon, ::Val{:prop},
     ipoptions=Dict{Any,Any}("print_level"=>3)
     options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=SNOW.SNOPT())
     x0  = zeros(Nx) .+ 1/2
-    xopt, fopt, info = SNOW.minimize(fun, x0, Ng, lx, ux, lg, ug, options)
-    return xopt[1:3]
+    t = time()
+    xopt, fopt, info, out = SNOW.minimize(fun, x0, Ng, lx, ux, lg, ug, options)
+    t = time()-t
+    
+    open(filename, "w") do io
+        write(io, 
+        """Neval: $Neval
+        Nfreebies: 0
+        time: $t
+        """)
+    end
+    return xopt[1:3], false
+end
+
+
+function solveaao(z0)
+    vars = (;
+    # Global
+    V     = Var(lb=5., ub=15., ),
+    # Wing
+    S     = Var(lb=0.1, ub=1., ),
+    b     = Var(lb=0.1, ub=5., ),
+    # Prop
+    volts = Var(lb=0.1, ub=9., ),
+    )
+    idz = indexbyname(vars)
+    
+    Neval = 0
+    function fun(g,z)
+        Neval += 1
+        v = unscale_unpack(z, idz, variables)
+        Mbattery_rqd,FlightTime,RPM,T,Q,Pin,I,etap,etam,eta, J_UI = PropulsionModel(v.V, v.volts)
+        D, CL, LD, M_wing, M_total = WingModel(v.V, v.S, v.b, Mbattery_rqd) 
+        g[1] = (D - T)
+        g[2] = J_UI
+        return -v.V
+    end
+    Nx = 4
+    lx = zeros(Nx)
+    ux = ones(Nx)
+    Ng = 2
+    lg = [-Inf, 0.1]
+    ug = [0., 0.8]
+    options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=SNOW.SNOPT())
+    t = time()
+    xopt, fopt, info, out = SNOW.minimize(fun, z0, Ng, lx, ux, lg, ug, options)
+    t = time()-t
+    
+    return xopt, Neval
 end

@@ -104,8 +104,9 @@ function BayesianCollaborativeOptimization.subspace(::Sellar, ::Val{:d2},  z0::A
     # Cast z0 to bounds
     @. z0 = max(0., z0)
     @. z0 = min(1., z0)
-
+    Neval = 0
     function fun(g, df, dg, z)
+        Neval += 1
         v = unscale_unpack(z[1:5],idx,V)
         
         g[1] = v.y2 - (sqrt(v.y1) + v.z + v.x[2])
@@ -140,14 +141,25 @@ function BayesianCollaborativeOptimization.subspace(::Sellar, ::Val{:d2},  z0::A
     ug = [0.,0.,0.,0.,0.,0.]
 
     options = SNOW.Options(derivatives=SNOW.UserDeriv(), solver=SNOW.IPOPT(ipoptions))
+    t = time()
     xopt, fopt, info = SNOW.minimize(fun, [copy(z0);copy(z0)], Ng, lx, ux, lg, ug, options)
+    t = time()-time
+    
+    open(filename, "w") do io
+        write(io, 
+        """Neval: $Neval
+        Nfreebies: 0
+        time: $t
+        """)
+    end
     return copy(xopt)[6:10], false
 end
 
 function sellar_aao(z0)
     prb = Sellar()
-
+    Neval = 0
     function fun(g,z)
+        Neval += 1
         v = unscale_unpack(z,idx,V)
         g[1] = v.y1 - (v.z^2 + v.x[1] + v.x[2]-0.2*v.y2)
         g[2] = v.y2 - (sqrt(v.y1) + v.z + v.x[2])
@@ -162,7 +174,17 @@ function sellar_aao(z0)
     ug = [0.,0.]
     
     options = SNOW.Options(derivatives=SNOW.CentralFD(), solver=SNOW.IPOPT(), sparsity=SNOW.DensePattern())
+    t = time()
     xopt, fopt, info = SNOW.minimize(fun, z0, Ng, lx, ux, lg, ug, options)
+    t = time()-t
+    
+    open(filename, "w") do io
+        write(io, 
+        """Neval: $Neval
+        Nfreebies: 0
+        time: $t
+        """)
+    end
     return  objective(prb, xopt), unscale_unpack(xopt, idx, V)
 end
 

@@ -1,5 +1,5 @@
 using Pkg
-Pkg.activate(joinpath(@__DIR__),"..")
+Pkg.activate(joinpath(@__DIR__,"../."))
 using BayesianCollaborativeOptimization
 using LinearAlgebra
 using JLD2
@@ -45,16 +45,16 @@ solve(bco, options)
 ddir = (; A="xpu/A.jld2", B="xpu/B.jld2")
 data = map(load_data, ddir);
 ##
-savedir = "$HOME/examples/twindisks/xp_jun27"
+savedir = "$HOME/examples/twindisks/xp_feb15_2"
 for i=0:19
-    # options = SolveOptions(tol=1e-6, n_ite=15, ini_samples=1, warm_start_sampler=i, savedir="$savedir/xpu$i/bco/")
-    # solve(bco, options)
+    options = SolveOptions(n_ite=15, ini_samples=1, warm_start_sampler=i, savedir="$savedir/xpu$i/bco/")
+    solve(bco, options)
     
-    options = SolveOptions(n_ite=25, ini_samples=1, warm_start_sampler=i, savedir="$savedir/xpu$i/sqp/")
-    solve(sqp, options)
+    # options = SolveOptions(n_ite=25, ini_samples=1, warm_start_sampler=i, savedir="$savedir/xpu$i/sqp/")
+    # solve(sqp, options)
     
-    options = SolveOptions(n_ite=25, ini_samples=1, warm_start_sampler=i, savedir="$savedir/xpu$i/admm/")
-    solve(adm, options)
+    # options = SolveOptions(n_ite=25, ini_samples=1, warm_start_sampler=i, savedir="$savedir/xpu$i/admm/")
+    # solve(adm, options)
 end
 
 ## Regular CO

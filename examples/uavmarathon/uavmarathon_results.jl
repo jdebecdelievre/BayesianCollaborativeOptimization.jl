@@ -1,14 +1,18 @@
+using Pkg
+Pkg.activate("$(@__DIR__)/../.")
+
 using BayesianCollaborativeOptimization
 using LinearAlgebra
 using Statistics
-using LaTeXStrings
 using JLD2
 using Plots
+using CSV
 HOME = pwd()
 include("$HOME/examples/uavmarathon/uavmarathon.jl")
 T = UAVmarathon()
 
 ##
+neval = 31
 nruns = 20
 pad = true
 method = ["bco","sqp","admm"]
@@ -18,7 +22,7 @@ dobj = Dict{Any,Any}()
 sqJ = Dict{Any,Any}()
 for m=method
     #
-    M = map(i->get_metrics(T, "$HOME/examples/uavmarathon/xpu$(i)/$m"),1:nruns)
+    M = map(i->get_metrics(T, "$HOME/examples/uavmarathon/xp_feb13_23/xpu$(i)/$m"),1:nruns)
     metric[m] = first.(M)
     sqJ[m] = last.(M)
     obj[m] = getindex.(M,[2])
@@ -33,7 +37,6 @@ for m=method
         sqJ[m]    = [map(s->[s; ones(l-length(s))*s[end]],ss) for ss=sqJ[m]]
     end
 end
-
 ## Objective Function
 method = ["bco","sqp","admm"]
 leg = ["Bayesian CO", "SQP","ADMM"]
@@ -44,7 +47,7 @@ lo = V.V.lb[1]
 up = V.V.ub[1]
 for (kc,m)=enumerate(method)
     l0  = (m[1:3] == "sqp") ? 2 : 1
-    l = min(16,minimum(length, metric[m])) + l0 - 1
+    l = min(neval,minimum(length, metric[m])) + l0 - 1
     O = zeros(l-l0+1)
     n = 0
     for k=1:20
@@ -58,7 +61,7 @@ end
 hline!(p, [opt.V], linestyle=:dash, label="optimum")
 xlabel!("Number of Subspace Evaluations")
 title!("Objective Function For 20 Random Initial Guesses")
-savefig("$HOME/examples/uavmarathon/comparative_obj_jul20_uavmarathon.pdf")
+# savefig("$HOME/examples/uavmarathon/comparative_obj_feb13_uavmarathon.pdf")
 
 
 ## Feasibility
@@ -66,7 +69,7 @@ p = plot(yaxis=:log10)
 ylabel!(p, L"\sqrt{J_{wing}} + \sqrt{J_{prop}}")
 for (kc,m)=enumerate(method)
     l0  = (m[1:3] == "sqp") ? 2 : 1
-    l = min(16,minimum(length, metric[m])) + l0-1
+    l = min(neval,minimum(length, metric[m])) + l0-1
     SQJ = zeros(l-l0+1)
     n = 0
     for k=1:20
@@ -80,4 +83,43 @@ end
 ylims!(1e-4, 1.)
 xlabel!("Number of Subspace Evaluations")
 title!("Feasibility For 20 Random Initial Guesses")
-savefig("$HOME/examples/uavmarathon/comparative_sqJ_jul20_uavmarathon.pdf")
+savefig("$HOME/examples/uavmarathon/comparative_sqJ_feb13_uavmarathon.pdf")
+
+## Count Neval
+nite_wing = Dict{Any,Any}()
+nite_prop = Dict{Any,Any}()
+for (kc,m)=enumerate(method)
+    nite_wing[m] = zeros(nruns)
+    nite_prop[m] = zeros(nruns)
+    for i=1:nruns
+        open("$HOME/examples/uavmarathon/xp_feb13_23/xpu$(i)/$m/eval/wing/0_1.txt") do io
+            nite_wing[m][i] += parse(Int64, (split(readline(io)," ")[end]))
+        end
+        for j=1:neval-1
+            if metric[m][i][j] < 0.01
+                break
+            end
+            open("$HOME/examples/uavmarathon/xp_feb13_23/xpu$(i)/$m/eval/wing/$j.txt") do io
+                nite_wing[m][i] += parse(Int64, (split(readline(io)," ")[end]))
+            end
+        end
+        
+        open("$HOME/examples/uavmarathon/xp_feb13_23/xpu$(i)/$m/eval/prop/0_1.txt") do io
+            nite_prop[m][i] += parse(Int64, (split(readline(io)," ")[end]))
+        end
+        for j=1:neval-1
+            if metric[m][i][j] < 0.01
+                break
+            end
+            open("$HOME/examples/uavmarathon/xp_feb13_23/xpu$(i)/$m/eval/prop/$j.txt") do io
+                nite_prop[m][i] += parse(Int64, (split(readline(io)," ")[end]))
+            end
+        end
+    end
+end
+for k=nite_wing
+    println("wing: $(k[1]) : $(mean(k[2])) ($(std(k[2])))")
+end
+for k=nite_prop
+    println("prop: $(k[1]) : $(mean(k[2])) ($(std(k[2])))")
+end

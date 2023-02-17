@@ -73,7 +73,6 @@ end
 objective function, NamedTuple of ensembles, initial values
 """
 function maximize_ei(solver::BCO, data::NamedTuple{disciplines}, ensembles::NamedTuple{disciplines}, savedir::String) where disciplines
-    m   = length(data[disciplines[1]].Z)
     Nz  = number_shared_variables(solver.problem)
     nd = length(disciplines)
     idz = indexmap(solver.problem)
@@ -81,43 +80,56 @@ function maximize_ei(solver::BCO, data::NamedTuple{disciplines}, ensembles::Name
     tol = solver.tol
     
     ## Initial guesses and best point
+    m = maximum(data[d].ite[end] for d=disciplines) + 1
     z = zeros(Nz)
-    EIc = zeros(m*nd)
-    ite = zeros(Int64,m*nd)
-    maxZ = [copy(z) for _=1:m*nd]
-    iniZ = [copy(z) for _=1:m*nd]
+    iniZ = [copy(z) for _=1:(1+m*nd)]
+    nid = zeros(Int64, Nz)
     best = objective_lowerbound(solver.problem)
-    nid = copy(z)
-    j = 1
-    for i = 1:m
+    Nini = 1
+    for i = 0:m-1
         # Compute average zstar from disciplines
-        nid .= 0.
-        z .= 0.
+        nid .= 0
+        z .= 0.0
+        skip = false
+
+        # Find index of projected point in data[d].Zs
+        # (Not very efficient but needed to cover the case of freebies and failed subspace opt)
+        # Assumes that actual point (not freebies) for iteration `ite` is the first point added
+        idx = map(D->findnext(j->(j==i),D.ite,1), data)
+
+        # Compute average of projected point
         for d=disciplines
-            z[idz[d]]  .+= data[d].Zs[i]
-            nid[idz[d]] .+= 1.
+            isa(idx[d], Nothing) && (skip=true; break) # skip discipline if it failed
+            z[idz[d]]  .+= data[d].Zs[idx[d]]
+            nid[idz[d]] .+= 1
         end
+        skip && continue # skip point if one discipline failed
         @. z = z / nid
         
-        # Add one initial value per discipline
+        # Add one initial value per discipline (replace average by actual when dimension exists)
         for d=disciplines
-            @. iniZ[j] = z
-            @. iniZ[j][idz[d]] = data[d].Zs[i]
-            j+=1
+            @. iniZ[Nini] = z
+            @. iniZ[Nini][idz[d]] = data[d].Zs[idx[d]]
+            Nini+=1
         end
-        
+
         # Find best point so far
         gfs = 1
         for d=disciplines
-            z[idz[d]] .= data[d].Z[i]
-            gfs *= data[d].fsb[i]
+            z[idz[d]] .= data[d].Z[idx[d]]
+            gfs *= data[d].fsb[idx[d]]
         end
         obj = objective(solver.problem, z)
         if (gfs == 1) && (obj>best)
             best = obj
         end
     end
-
+    iniZ = iniZ[1:Nini]
+    iniZ[Nini] .= rand(Nz)
+    EIc = zeros(Nini)
+    ite = zeros(Int64,Nini)
+    maxZ = [copy(z) for _=1:Nini]
+    
     ## Constrained Expected Improvement EIc function
     # Preallocations
     cache = eic_cache(ensembles)
@@ -131,9 +143,9 @@ function maximize_ei(solver::BCO, data::NamedTuple{disciplines}, ensembles::Name
     slsqp.maxeval = 2500
     
     ## Run maximization of EIc for each initial guess
-    stepsize = ones(m*nd) * solver.stepsize
-    msg = Vector{Symbol}(undef,m*nd)
-    for i = 1:length(EIc)
+    stepsize = ones(Nini) * solver.stepsize
+    msg = Vector{Symbol}(undef,Nini)
+    for i = eachindex(EIc)
         # Cast to strict bounds before using SLSQP
         @. iniZ[i] = max(iniZ[i], eps())
         @. iniZ[i] = min(iniZ[i], 1-eps())

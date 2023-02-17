@@ -1,3 +1,6 @@
+using Pkg
+Pkg.activate("$(@__DIR__)/../.")
+
 using BayesianCollaborativeOptimization
 using LinearAlgebra
 using Statistics
@@ -12,7 +15,7 @@ gmet = [ 0.9395783514629933, 0.6644157664688632, 0.24305338004907254, 0.17855792
 
 ##
 
-method = ["bco","sqp"]
+method = ["bco"]
 nruns = 20
 pad = true
 metric = Dict{Any,Any}()
@@ -21,7 +24,7 @@ dobj = Dict{Any,Any}()
 sqJ = Dict{Any,Any}()
 for m=method
     #
-    M = map(i->get_metrics(T, "$HOME/examples/tailless/xp_jul21/$m/xpu$i"),1:nruns)
+    M = map(i->get_metrics(T, "$HOME/examples/tailless/xp2_feb14_23/$m/xpu$i"),1:nruns)
     metric[m] = first.(M)
     sqJ[m] = last.(M)
     obj[m] = getindex.(M,[2])
@@ -36,13 +39,23 @@ for m=method
         sqJ[m]    = [map(s->[s; ones(l-length(s))*s[end]],ss) for ss=sqJ[m]]
     end
 end
+
+## Saving in format compatible with phd thesis
+sqJaero = hcat((sqJ["bco"][i].aero for i=1:nruns)...)
+sqJstruc = hcat((sqJ["bco"][i].struc for i=1:nruns)...)
+JLD2.save("$HOME/examples/tailless/metric_hnet.jld2", 
+    "dobj_srt", hcat(dobj["bco"]...),
+    "sqJaero_srt", sqJaero,
+    "sqJstruc_srt", sqJstruc,
+    "metric",hcat(metric["bco"]...))
 ##
 p = plot(yaxis=:log10)
 for m=method
     l = min(32,minimum(length, metric[m]))
-    plot!(p,mean([m_[1:l] for m_=metric[m]]), yaxis=:log10,label=m)
+    plot!(p,mean([m_[1:l] for m_=metric[m]]),label=m)
+    # plot!(p,([m_[1:l] for m_=metric[m]]),label=m)
 end
-plot!(gmet, yaxis=:log10,label="gpsort")
+plot!(gmet,label="gpsort")
 xlabel!("Number of Subspace Evaluations")
 ylabel!("Metric")
 title!("Average Metric For 20 Random Initial Guesses")
@@ -122,3 +135,21 @@ ylims!(1e-4, 1.)
 xlabel!("Number of Subspace Evaluations")
 title!("Feasibility For 20 Random Initial Guesses")
 # savefig("$HOME/examples/tailless/comparative_sqJ_jul21_tailless.pdf")
+##
+# @load "examples/tailless/xpu7tmp/solver/eic/29/eic.jld2"
+@load "examples/tailless/xpu7tmp/obj.jld2"
+
+solver = BCO(Tailless(), 
+N_epochs=500_000, stepsize=10.,
+dropprob= 0.02, 
+αlr=0.97, 
+nlayers=40, nparticles=6, ntrials=2, training_tol=1e-3, tol=1e-3)
+# solver = SQP(Tailless(), tol=1e-3)
+# solver = ADMM(Tailless())
+savedir = "examples/tailless/xpu7tmp"
+options = SolveOptions(n_ite=30, ini_samples=1, 
+warm_start_sampler=1, 
+savedir = savedir)
+
+data = load_data(savedir, T);
+z, Zd, eic_max = BayesianCollaborativeOptimization.get_new_point(29, solver, data, "$savedir/solver")

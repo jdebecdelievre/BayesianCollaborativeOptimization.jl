@@ -2,6 +2,11 @@ function learn_feasible_set(options, data, savedir)
     (; nparticles,  nlayers, nresample, N_epochs, logfreq, lr, αlr, ntrials) = options
     ENV["GKSwstype"] = "100"
     
+    if isfile("$savedir/ensemble.jld2")
+        println("Found trained ensemble at $savedir/ensemble.jld2")
+        return load_ensemble("$savedir/ensemble.jld2")
+    end
+
     mkpath(savedir)
     bounds= @SVector [0.,1.]
     n = size(data.Z[1],1)

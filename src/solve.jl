@@ -52,7 +52,8 @@ function solve(solver::AbstractSolver, options::SolveOptions;
             ini_samples = 1
         end
         obj = map(z->objective(problem, z),Z)
-        save("$savedir/obj.jld2","Z",Z,"obj",obj)
+        sqJ = NamedTuple{disciplines}(ntuple(i->zeros(Float64, ini_samples), length(disciplines)))
+        fsb = NamedTuple{disciplines}(ntuple(i->zeros(Int64, ini_samples), length(disciplines)))
 
         # Create data storage 
         data = NamedTuple{disciplines}(Tuple((; 
@@ -68,25 +69,30 @@ function solve(solver::AbstractSolver, options::SolveOptions;
             D = data[d]
             @timeit to "ite0" begin
             for (i,z)=enumerate(Z)
-                D.Z[i]  .= z[idz[d]]
-                @timeit to "$d" (out = subspace(problem, Val(d), D.Z[i], "$savedir/eval/$d/0_$i.txt"))
-                zs, failed = out
-                j = 1
-                while (j<4) && failed # retry new random points if optimization fails
-                    # Future improvement: integrate failed points as infeasible
-                    print(io, "Initial evaluation failed $j/3 for discipline $d")
+                failed = true
+                j = 0
+                while failed # retry new random points if optimization fails at starting point
+                    (j>1) && println(io, "Initial evaluation failed $j/3 for discipline $d")
                     z = next!(Sz)
                     D.Z[i]  .= z[idz[d]]
-                    @timeit to "$d" (zs, failed = subspace(problem, Val(d), D.Z[i], "$savedir/eval/$d/0_$i.txt"))
+                    @timeit to "$d" (out = subspace(problem, Val(d), D.Z[i], "$savedir/eval/$d/0_$i.txt"))
+                    zs, failed = out
                     j += 1
+                    if j>4
+                        println(io, "$d subspace failed on 5 random initial guesses.")
+                        return obj, sqJ, fsb, Z
+                    end
+                    D.Zs[i] .= zs 
+                    D.sqJ[i] = norm(D.Z[i] .- D.Zs[i])
+                    D.fsb[i] = (D.sqJ[i]<tol)
+                    sqJ[d][i] = D.sqJ[i]
+                    fsb[d][i] = D.fsb[i]
                 end
-                D.Zs[i] .= zs 
-                D.sqJ[i] = norm(D.Z[i] .- D.Zs[i])
-                D.fsb[i] = (D.sqJ[i]<tol)
             end
             end
             save_data("$savedir/$d.jld2",D)
         end
+        save("$savedir/obj.jld2","Z",Z,"obj",obj,"sqJ",sqJ,"fsb",fsb)
     else
         # Load discipline data
         data = NamedTuple{disciplines}(map(d->load_data("$savedir/$d.jld2"), disciplines))
@@ -108,34 +114,41 @@ function solve(solver::AbstractSolver, options::SolveOptions;
         # A/ Get new point
         @timeit to "solver" begin
             z, Zd, eic_max = get_new_point(ite, solver, data, "$savedir/solver")
+            push!(Z,z)
         end
 
-        # B/ Evaluate and save new point
+        # B/ Evaluate objective
+        o = objective(problem, z)
+        push!(obj,o)
+
+        # C/ Evaluate constraints and expand dataset
         for d=disciplines
             @timeit to "$d" (out = subspace(problem, Val(d), Zd[d], "$savedir/eval/$d/$(ite).txt"))
             zs, failed = out
+            
             sqJd = norm(zs-z[idz[d]]) # z[idz.d] =/= Zd[d] for ADMM. Really the infeasibility should be measured against z[idz.d]
             # sqJd = norm(zs-Zd[d])
             new_data = (;
                 Z=Zd[d], Zs=zs, sqJ=sqJd, fsb=(sqJd<tol), ite=ite
             )
+
             if failed # Future improvement: integrate failed points as infeasible
-                print(io, "Evaluation failed for discipline $d. Point ignored. Networks will still be retrained.")
+                push!(sqJ[d],1.0)
+                push!(fsb[d],false)
+                println(io, "Evaluation failed for discipline $d. Point ignored. Networks will still be retrained.")
                 continue
+            else
+                push!(sqJ[d],sqJd)
+                push!(fsb[d],(sqJd<tol))
+                map((D,nd)->push!(D,nd), data[d], new_data)
             end
-            map((D,nd)->push!(D,nd), data[d], new_data)
             save_data("$savedir/$d.jld2",data[d])
         end
         idata += 1
         
-        # C/ Save progress
-        o = objective(problem, z)
-        push!(Z,z)
-        push!(obj,o)
-        fsb = map(D->D.fsb,data)
-        sqJ = map(D->D.sqJ,data)
+        # D/ Save progress
         save("$savedir/obj.jld2","Z",Z,"obj",obj,"sqJ",sqJ,"fsb",fsb)
-        @printf io "%3i %.3e %.3e %.3e %2i \n" ite o sum(sqJ)[end] eic_max sum(fsb)[end]
+        @printf io "%3i %.3e %.3e %.3e %2i \n" ite obj[end] sum(sqJ)[end] eic_max sum(fsb)[end]
         !terminal_print && flush(io)
         ite += 1
         end
