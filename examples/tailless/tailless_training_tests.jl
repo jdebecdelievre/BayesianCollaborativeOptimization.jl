@@ -64,7 +64,7 @@ end
 ##
 mkpath(savedir)
 bounds=[0.,1.]
-net = HouseholderNet(nlayers,n)
+net = HouseholderNet(n,nlayers,1)
 SGD(lr=0.01, αlr=.999, N_epochs=3000000, logfreq=100, bounds=bounds)
 cache = TrainingCache(net)
 initialization!(net, data.Z,data.Zs, Ntrials=100000, rng=opt.rng, bounds=bounds)

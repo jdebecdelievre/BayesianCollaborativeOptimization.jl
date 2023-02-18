@@ -9,6 +9,7 @@ struct BCO{problem} <: AbstractSolver{problem}
     nparticles::Int64 
     ntrials::Int64
     nlayers::Int64 
+    nchannels::Int64
     lr::Float64
     αlr::Float64 
     N_epochs::Int64 
@@ -30,6 +31,7 @@ struct BCO{problem} <: AbstractSolver{problem}
         nparticles::Int64 = 6,
         ntrials::Int64 = 2,
         nlayers::Int64 = 20,
+        nchannels::Int64 = 5,
         lr::Float64 = 0.01,
         αlr::Float64 = .95,
         N_epochs::Int64 = 500_000,
@@ -42,7 +44,7 @@ struct BCO{problem} <: AbstractSolver{problem}
 
         ) where {prb<:AbstractProblem}
         to = TimerOutput()
-        new{prb}(problem, tol, training_tol, nparticles, ntrials, nlayers, lr, αlr, N_epochs, logfreq, nresample, dropprob, stepsize, to)
+        new{prb}(problem, tol, training_tol, nparticles, ntrials, nlayers, nchannels, lr, αlr, N_epochs, logfreq, nresample, dropprob, stepsize, to)
     end
 end
 

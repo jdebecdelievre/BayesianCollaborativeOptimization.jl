@@ -7,11 +7,15 @@ Cache for EIC calculation:
     WZ: NamedTuple{disciplines} of vectors useful in backprop
 """
 function eic_cache(ensembles::NamedTuple{dis}) where dis #,NTuple{nd,Vector{HouseholderNet{L,Sn,TF}}}} where {nd, dis,L,Sn,TF})
-    cache = (;  Zd   = map(e->copy(e[1].W[1]),ensembles),
-                dp   = map(e->copy(e[1].W[1]),ensembles), # gradient of each ensemble
-                h    = map(e->zeros(length(e)), ensembles), # output of each network for each ensemble
-                dhdx = map(e->[copy(net.W[1]) for net=e], ensembles), # gradient of each network for each ensemble
-                WZ   = map(e->zeros(length(e[1].W)-1), ensembles) # helper buffer for backprop
+    w = ensembles[dis[1]][1][1].W[1]
+    L = length(ensembles[dis[1]][1][1])
+    Nn = length(ensembles[dis[1]])
+    cache = (;  Zd   = map(e->copy(w),ensembles),
+                dp   = map(e->copy(w),ensembles), # gradient of each ensemble
+                h    = map(e->zeros(Nn), ensembles), # output of each network for each ensemble
+                dhdx = map(e->[copy(w) for _=1:Nn], ensembles), # gradient of each network for each ensemble
+                WZ   = map(e->zeros(L-1), ensembles), # helper buffer for backprop
+                WZ_  = map(e->zeros(L-1), ensembles) # helper 2 buffer for backprop
             )
     return cache
 end
@@ -31,7 +35,7 @@ function eic(z::V, grad::V, z0::V, problem::AbstractProblem,
             ensembles::NamedTuple{disciplines},#,NTuple{nd, Vector{HouseholderNet{L,Sn,TF}}}} where {nd,L,Sn,TF}, 
             best::Float64, cache::NamedTuple=eic_cache(ensembles)) where {V<:AbstractVector,disciplines}
     # get preallocated buffers
-    (; Zd, h, dhdx, dp, WZ) = cache
+    (; Zd, h, dhdx, dp, WZ, WZ_) = cache
     idz = indexmap(problem)
 
     # determine whether to compute the gradient
@@ -50,7 +54,7 @@ function eic(z::V, grad::V, z0::V, problem::AbstractProblem,
         Zd[d] .= view(z,idz[d])
         
         # Compute vector and gradient
-        p = predict_grad!(dp[d],Zd[d], ensembles[d], tol, WZ=WZ[d], dhdx=dhdx[d], h=h[d])
+        p = predict_grad!(dp[d],Zd[d], ensembles[d], tol, WZ=WZ[d], WZ_=WZ_[d], dhdx=dhdx[d], h=h[d])
         if g
             # @. grad = grad*p + ei * dp[d]
             grad[idz[d]] .*= p
