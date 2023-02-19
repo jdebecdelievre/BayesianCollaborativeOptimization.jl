@@ -12,6 +12,15 @@ struct SQP{prb} <: AbstractSolver{prb}
     end
 end
 
+function Base.show(io::IO, sqp::SQP)
+    print(io, 
+"""SQP:
+    problem::: $(sqp.problem)
+    tol: $(sqp.tol)
+    λ: $(sqp.λ)
+""")
+end
+
 
 function solve(solver::SQP, options::SolveOptions; 
                 z0::Union{Nothing, <:AbstractArray}=nothing, terminal_print=true)

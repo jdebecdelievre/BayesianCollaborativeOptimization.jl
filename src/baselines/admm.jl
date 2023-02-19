@@ -27,6 +27,16 @@ struct ADMM{problem,disciplines,ndisciplines} <: AbstractSolver{problem}
     end
 end
 
+function Base.show(io::IO, admm::ADMM)
+    print(io, 
+"""ADMM:
+    problem::: $(admm.problem)
+    tol: $(admm.tol)
+    ρ: $(admm.ρ)
+""")
+end
+
+
 """
 At iteration k:
 zd[k+1] = zs_d[k] + (zd[k] - z̄s[k])
