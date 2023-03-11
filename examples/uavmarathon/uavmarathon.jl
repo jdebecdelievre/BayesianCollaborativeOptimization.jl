@@ -259,7 +259,7 @@ function BayesianCollaborativeOptimization.subspace(::UAVmarathon, ::Val{:prop},
 end
 
 
-function solveaao(z0)
+function solveaao(z0 = ones(4)/2)
     vars = (;
     # Global
     V     = Var(lb=5., ub=15., ),
@@ -274,7 +274,7 @@ function solveaao(z0)
     Neval = 0
     function fun(g,z)
         Neval += 1
-        v = unscale_unpack(z, idz, variables)
+        v = unscale_unpack(z, idz, vars)
         Mbattery_rqd,FlightTime,RPM,T,Q,Pin,I,etap,etam,eta, J_UI = PropulsionModel(v.V, v.volts)
         D, CL, LD, M_wing, M_total = WingModel(v.V, v.S, v.b, Mbattery_rqd) 
         g[1] = (D - T)
