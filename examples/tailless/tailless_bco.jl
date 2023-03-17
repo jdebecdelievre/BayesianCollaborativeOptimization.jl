@@ -5,7 +5,7 @@ addprocs(7, exeflags="--project=$(Base.active_project())")
 
 @everywhere begin
     using BayesianCollaborativeOptimization
-    prefix = joinpath(@__DIR__,"xp_feb16_23/bco")
+    prefix = joinpath(@__DIR__,"xp_feb18_23/bco")
     include(joinpath(@__DIR__,"tailless.jl"))
 
     Z0 =  [[0.65625, 0.46875, 0.09375, 0.46875, 0.28125],

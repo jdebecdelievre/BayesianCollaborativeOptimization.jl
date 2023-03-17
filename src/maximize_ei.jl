@@ -7,15 +7,15 @@ Cache for EIC calculation:
     WZ: NamedTuple{disciplines} of vectors useful in backprop
 """
 function eic_cache(ensembles::NamedTuple{dis}) where dis #,NTuple{nd,Vector{HouseholderNet{L,Sn,TF}}}} where {nd, dis,L,Sn,TF})
-    w = ensembles[dis[1]][1][1].W[1]
-    L = length(ensembles[dis[1]][1][1])
-    Nn = length(ensembles[dis[1]])
-    cache = (;  Zd   = map(e->copy(w),ensembles),
-                dp   = map(e->copy(w),ensembles), # gradient of each ensemble
-                h    = map(e->zeros(Nn), ensembles), # output of each network for each ensemble
-                dhdx = map(e->[copy(w) for _=1:Nn], ensembles), # gradient of each network for each ensemble
-                WZ   = map(e->zeros(L-1), ensembles), # helper buffer for backprop
-                WZ_  = map(e->zeros(L-1), ensembles) # helper 2 buffer for backprop
+    w(e) = e[1][1].W[1]
+    L(e) = length(e[1][1])
+    Nn(e) = length(e)
+    cache = (;  Zd   = map(e->copy(w(e)),ensembles),
+                dp   = map(e->copy(w(e)),ensembles), # gradient of each ensemble
+                h    = map(e->zeros(Nn(e)), ensembles), # output of each network for each ensemble
+                dhdx = map(e->[copy(w(e)) for _=1:Nn(e)], ensembles), # gradient of each network for each ensemble
+                WZ   = map(e->zeros(L(e)-1), ensembles), # helper buffer for backprop
+                WZ_  = map(e->zeros(L(e)-1), ensembles) # helper 2 buffer for backprop
             )
     return cache
 end

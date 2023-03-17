@@ -1,9 +1,10 @@
 """
 Options structure for BCO
 """
-struct BCO{problem} <: AbstractSolver{problem}
+struct BCO{problem,DP<:Union{Nothing,Float64}} <: AbstractSolver{problem}
     problem::problem
     tol::Float64
+
     # Training
     training_tol::Float64
     nparticles::Int64 
@@ -15,7 +16,7 @@ struct BCO{problem} <: AbstractSolver{problem}
     N_epochs::Int64 
     logfreq::Int64 
     nresample::Int64
-    dropprob::Float64 
+    dropprob::DP 
 
     # Minimization
     stepsize::Float64
@@ -37,15 +38,39 @@ struct BCO{problem} <: AbstractSolver{problem}
         N_epochs::Int64 = 500_000,
         logfreq::Int64 = 1000,
         nresample::Int64 = 0,
-        dropprob::Float64 = 0.,
+        dropprob::DP,
 
         # Minimization
         stepsize::Float64=1.
 
-        ) where {prb<:AbstractProblem}
+        ) where {prb<:AbstractProblem,DP<:Union{Nothing,Float64}}
         to = TimerOutput()
-        new{prb}(problem, tol, training_tol, nparticles, ntrials, nlayers, nchannels, lr, αlr, N_epochs, logfreq, nresample, dropprob, stepsize, to)
+        new{prb,DP}(problem, tol, training_tol, nparticles, ntrials, nlayers, nchannels, lr, αlr, N_epochs, logfreq, nresample, dropprob, stepsize, to)
     end
+end
+
+function Base.show(io::IO, bco::BCO)
+    print(io, 
+"""BayesianCollaborativeOptimization:
+    problem::: $(bco.problem)
+    tol: $(bco.tol)
+    
+    # Training
+    training_tol: $(bco.training_tol)
+    nparticles: $(bco.nparticles)
+    ntrials: $(bco.ntrials)
+    nlayers: $(bco.nlayers)
+    nchannels: $(bco.nchannels)
+    lr: $(bco.lr)
+    αlr: $(bco.αlr)
+    N_epochs: $(bco.N_epochs)
+    logfreq: $(bco.logfreq)
+    nresample: $(bco.nresample)
+    dropprob: $(bco.dropprob)
+    
+    # Minimization
+    stepsize: $(bco.stepsize)
+""")
 end
 
 """

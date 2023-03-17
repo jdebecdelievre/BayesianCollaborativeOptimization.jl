@@ -1,6 +1,6 @@
 using Pkg
 Pkg.activate("$(@__DIR__)/../.")
-
+##
 using Revise
 using LinearAlgebra
 using JLD2
@@ -12,10 +12,10 @@ HOME = pwd()
 include(joinpath(@__DIR__,"uavmarathon.jl"))
 
 ##
-for i=1:1
-    options = SolveOptions(n_ite=30, ini_samples=1, iteration_restart=29, warm_start_sampler=i, savedir="examples/uavmarathon/xp_feb16_23/xpu$i/bco")
+for i=1:20
+    options = SolveOptions(n_ite=30, ini_samples=1, iteration_restart=0, warm_start_sampler=i, savedir="examples/uavmarathon/tmp/bco/xpu$i")
     solver = BCO(UAVmarathon(), training_tol=1e-3, N_epochs=300_000, stepsize=100., 
-                            dropprob=0.02, αlr=0.97, nlayers=20, nchannels=1, tol=1e-3, nparticles=2, ntrials=1)
+                            dropprob=nothing, αlr=0.97, nlayers=20, nchannels=5, tol=1e-3, nparticles=2, ntrials=1)
     solve(solver, options, terminal_print=false)
     
     ## 

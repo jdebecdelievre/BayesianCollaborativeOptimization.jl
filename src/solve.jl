@@ -33,6 +33,7 @@ function solve(solver::AbstractSolver, options::SolveOptions;
     mkpath(savedir)
     io = terminal_print ? stdout : open("$savedir/msg.txt","w")
     println(io,options)
+    println(io,solver)
     JLD2.save("$savedir/inputs.jld2", "options", options, "idz", idz)
 
     # Create sampler
